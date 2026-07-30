@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
-import { Search, FileText, Calendar, Printer, X, Eye } from 'lucide-react';
+import { Search, FileText, Printer, X, Eye } from 'lucide-react';
 
 export const SalesListView: React.FC = () => {
   const [sales, setSales] = useState<any[]>([]);

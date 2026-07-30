@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import { createClient } from '@supabase/supabase-js';
-import { User, Plus, Trash2, Shield, UserCheck, Key } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 export const UsersView: React.FC = () => {
   const { showToast, showConfirm } = useNotificationStore();

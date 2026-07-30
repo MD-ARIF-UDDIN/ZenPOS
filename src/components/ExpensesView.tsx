@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2, AlertCircle, Calendar, Receipt } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 interface ExpensesViewProps {
   onRefreshStats: () => void;

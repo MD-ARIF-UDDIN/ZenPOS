@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
-import { Plus, Search, Tag, Truck, Check, FileText } from 'lucide-react';
+import { Plus, Truck } from 'lucide-react';
 
 interface PurchasesViewProps {
   onRefreshStats: () => void;
@@ -312,18 +312,20 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
             </div>
 
             {/* Scanning tool */}
-            <div className="form-group">
-              <label className="form-label">Search Product to Restock</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                value={scanQuery} 
-                onChange={e => { setScanQuery(e.target.value); setShowSuggestions(true); }} 
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
-                placeholder="Click or type to search products..." 
-                autoComplete="off"
-              />
+            <div className="form-group" style={{ position: 'relative' }}>
+              <form onSubmit={handleScanOrSearch}>
+                <label className="form-label">Search Product to Restock</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={scanQuery} 
+                  onChange={e => { setScanQuery(e.target.value); setShowSuggestions(true); }} 
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
+                  placeholder="Click or type to search products..." 
+                  autoComplete="off"
+                />
+              </form>
               {showSuggestions && (
                 <div style={{
                   marginTop: '6px',

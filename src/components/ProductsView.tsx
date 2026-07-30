@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
-import { Plus, Edit2, Trash2, Tag, Shirt, Filter } from 'lucide-react';
+import { Plus, Trash2, Tag } from 'lucide-react';
 
 interface ProductsViewProps {
   onRefreshStats: () => void;

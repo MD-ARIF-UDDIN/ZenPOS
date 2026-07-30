@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePOSStore, useNotificationStore } from '../store';
 import type { ProductVariant } from '../store';
 import { dbService } from '../dbService';
-import { Search, Trash2, Plus, Minus, CreditCard, DollarSign, Smartphone, Printer, CheckCircle } from 'lucide-react';
+import { Search, Trash2, Plus, Minus, Printer, CheckCircle } from 'lucide-react';
 
 interface POSViewProps {
   onRefreshStats: () => void;
@@ -14,15 +14,12 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     cart, 
     discount, 
     paymentMethod, 
-    receivedAmount, 
     addToCart, 
     removeFromCart, 
     updateCartQty, 
     updateCartPrice,
     clearCart, 
-    setDiscount, 
-    setPaymentMethod, 
-    setReceivedAmount 
+    setDiscount
   } = usePOSStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -112,11 +109,6 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   const changeAmount = totalReceived > payableAmount ? totalReceived - payableAmount : 0;
   const dueAmount = totalReceived < payableAmount ? payableAmount - totalReceived : 0;
 
-  const addPaymentRow = () => {
-    const usedMethods = paymentRows.map(r => r.method);
-    const available = ['CASH', 'CARD', 'BKASH', 'NAGAD', 'ROCKET'].find(m => !usedMethods.includes(m));
-    if (available) setPaymentRows(prev => [...prev, { method: available, amount: 0 }]);
-  };
   const removePaymentRow = (idx: number) => setPaymentRows(prev => prev.filter((_, i) => i !== idx));
   const updatePaymentRow = (idx: number, field: 'method' | 'amount', value: string | number) =>
     setPaymentRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
@@ -129,7 +121,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   const handleCheckout = async () => {
     if (cart.length === 0) return;
 
-    const hasCash = paymentRows.some(r => r.method === 'CASH' && r.amount > 0);
+
     if (totalReceived <= 0) {
       showToast('Please enter at least one payment amount.', 'warning');
       return;
@@ -545,7 +537,6 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                         if (paymentRows.length > 1) removePaymentRow(paymentRows.findIndex(r => r.method === opt.value));
                         else updatePaymentRow(0, 'method', opt.value); // keep at least 1
                       } else {
-                        const emptyRow = paymentRows.findIndex(r => r.amount === 0 && !paymentRows.some((o, oi) => oi !== paymentRows.indexOf(r) && o.method === r.method));
                         if (paymentRows.length === 1 && paymentRows[0].amount === 0) {
                           updatePaymentRow(0, 'method', opt.value);
                         } else {

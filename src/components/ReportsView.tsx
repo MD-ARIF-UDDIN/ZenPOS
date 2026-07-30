@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { DollarSign, ShoppingBag, AlertCircle, Calendar, Package, ArrowUpRight, Receipt, Truck } from 'lucide-react';
+import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Truck } from 'lucide-react';
 
 type DateFilter = 'today' | 'week' | 'month' | 'all';
 
@@ -84,7 +84,6 @@ export const ReportsView: React.FC = () => {
   const totalExpenses = filteredExpenses.reduce((acc, exp) => acc + Number(exp.amount), 0);
   const totalPurchases = filteredPurchases.reduce((acc, p) => acc + Number(p.total_amount), 0);
   const overallNetProfit = totalProfit - totalExpenses;
-  const lowStockCount = variants.filter(v => v.stock_quantity <= v.min_stock_level).length;
 
   // Compute Top Selling Products & Product-wise Breakdown
   const productStatsMap: { [key: string]: { name: string; sku: string; barcode: string; size: string; color: string; qty: number; revenue: number; profit: number } } = {};
