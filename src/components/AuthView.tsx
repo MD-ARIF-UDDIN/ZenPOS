@@ -49,6 +49,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     }}>
       {/* Self-contained CSS for Mobile Responsiveness & Theme styling */}
       <style>{`
+        .login-title {
+          font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+          font-size: 22px;
+          font-weight: 900;
+          letter-spacing: 5px;
+          text-transform: uppercase;
+          background: linear-gradient(135deg, #d4a359 0%, #b4823c 100%);
+          -webkit-background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          background-clip: text !important;
+          color: transparent !important;
+          display: inline-block;
+          margin-bottom: 2px;
+        }
         @media (max-width: 480px) {
           .login-card {
             padding: 24px !important;
@@ -154,18 +168,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
             />
           </div>
           <div>
-            <span className="login-title" style={{ 
-              fontFamily: "'Outfit', 'Plus Jakarta Sans', sans-serif",
-              fontSize: '22px', 
-              fontWeight: 900, 
-              letterSpacing: '5px', 
-              textTransform: 'uppercase', 
-              background: 'linear-gradient(135deg, #d4a359 0%, #b4823c 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              display: 'inline-block',
-              marginBottom: '2px'
-            }}>
+            <span className="login-title">
               RAJMAHAL
             </span>
             <div style={{ 
