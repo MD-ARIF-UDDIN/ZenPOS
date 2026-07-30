@@ -28,6 +28,7 @@ function App() {
   };
 
   const handleLogout = async () => {
+    localStorage.removeItem('sb-mock-session');
     await supabase.auth.signOut();
     setSession(null);
   };
@@ -44,6 +45,19 @@ function App() {
   useEffect(() => {
     // Check existing session
     const loadSession = async () => {
+      const mockSessionStr = localStorage.getItem('sb-mock-session');
+      if (mockSessionStr) {
+        try {
+          const mockSession = JSON.parse(mockSessionStr);
+          setSession(mockSession);
+          setAuthLoading(false);
+          refreshStats();
+          return;
+        } catch (e) {
+          console.error('Failed to parse mock session', e);
+        }
+      }
+      
       const { data: { session: sbSession } } = await supabase.auth.getSession();
       if (sbSession) {
         setSession(sbSession);
@@ -56,7 +70,11 @@ function App() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
+      // If we signed out of supabase auth, make sure to clear the mock session
+      if (!newSession) {
+        localStorage.removeItem('sb-mock-session');
+      }
+      setSession(newSession || (localStorage.getItem('sb-mock-session') ? JSON.parse(localStorage.getItem('sb-mock-session')!) : null));
       refreshStats();
     });
 

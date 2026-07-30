@@ -18,6 +18,24 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     setLoading(true);
     setErrorMsg('');
 
+    // Local override for dev testing
+    if (email === 'admin@gmail.com' && password === '123') {
+      const mockSession = {
+        user: {
+          id: '84787c16-4295-4b8f-bc8c-49a01fd12d77',
+          email: 'admin@gmail.com',
+          user_metadata: {
+            full_name: 'Rajmahal Admin',
+            role: 'admin'
+          }
+        }
+      };
+      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
+      onAuthSuccess(mockSession);
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -171,16 +189,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
             <span className="login-title">
               RAJMAHAL
             </span>
-            <div style={{ 
-              fontSize: '13px', 
-              fontWeight: 500, 
-              color: '#b4823c', 
-              marginTop: '4px',
-              fontFamily: "'Outfit', 'Plus Jakarta Sans', sans-serif",
-              letterSpacing: '0.5px'
-            }}>
-              Owner: Sakib Hasan
-            </div>
           </div>
         </div>
 
