@@ -34,7 +34,7 @@ export const generateNextBarcodes = (variantsList: { barcode?: string }[] = [], 
 
   const result: string[] = [];
   for (let i = 1; i <= count; i++) {
-    result.push(`${reverseDate}${maxSerial + i}`);
+    result.push(`${reverseDate}-${maxSerial + i}`);
   }
   return result;
 };
@@ -814,14 +814,44 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           />
                         </td>
                         <td>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            value={row.barcode} 
-                            onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
-                            placeholder="Barcode" 
-                            style={{ height: '36px', fontSize: '13px', fontFamily: 'monospace', padding: '4px 8px', fontWeight: 600 }}
-                          />
+                          {(() => {
+                            const trimmedBc = row.barcode.trim();
+                            const isMissing = !trimmedBc;
+                            const isDupBatch = Boolean(trimmedBc && variantRows.filter(r => r.barcode.trim() === trimmedBc).length > 1);
+                            const isDupDb = Boolean(trimmedBc && variants.some(v => v.barcode && (v.barcode.trim() === trimmedBc || v.barcode.replace(/-/g, '') === trimmedBc.replace(/-/g, ''))));
+                            const hasError = isMissing || isDupBatch || isDupDb;
+                            let errorTooltip = '';
+                            if (isMissing) errorTooltip = 'Barcode is required';
+                            else if (isDupBatch) errorTooltip = 'Duplicate barcode in current batch';
+                            else if (isDupDb) errorTooltip = 'Barcode already exists in database';
+
+                            return (
+                              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                                <input 
+                                  type="text" 
+                                  className="form-control" 
+                                  value={row.barcode} 
+                                  onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
+                                  placeholder="e.g. 10016202-1" 
+                                  title={errorTooltip || 'Unique Barcode'}
+                                  style={{ 
+                                    height: '36px', 
+                                    fontSize: '13px', 
+                                    fontFamily: 'monospace', 
+                                    padding: '4px 8px', 
+                                    fontWeight: 600,
+                                    borderColor: hasError ? 'var(--color-danger)' : undefined,
+                                    backgroundColor: hasError ? 'rgba(244, 63, 94, 0.05)' : undefined
+                                  }}
+                                />
+                                {hasError && (
+                                  <span style={{ fontSize: '10px', color: 'var(--color-danger)', marginTop: '2px', fontWeight: 600 }}>
+                                    {errorTooltip}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td>
                           <input 
