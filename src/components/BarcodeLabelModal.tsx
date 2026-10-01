@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import JsBarcode from 'jsbarcode';
-import { Printer, X, Sparkles, Copy } from 'lucide-react';
+import { Printer, X } from 'lucide-react';
 import type { ProductVariant } from '../store';
 
 interface BarcodeLabelModalProps {
