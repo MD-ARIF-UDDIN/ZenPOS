@@ -64,16 +64,16 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
     return {
       cardWidth: cardW,
       cardHeight: cardH,
-      cardPadding: '2px 4px',
-      storeFontSize: '11px',
-      subFontSize: '7.5px',
-      prodFontSize: '9.5px',
-      specFontSize: '8.5px',
-      priceFontSize: '11.5px',
-      offerFontSize: '12px',
-      barcodeWidth: 1.1,
-      barcodeHeight: 18,
-      barcodeFontSize: 9,
+      cardPadding: '2px 6px',
+      storeFontSize: '10.5px',
+      subFontSize: '7px',
+      prodFontSize: '9px',
+      specFontSize: '8px',
+      priceFontSize: '11px',
+      offerFontSize: '11.5px',
+      barcodeWidth: 0.95,
+      barcodeHeight: 17,
+      barcodeFontSize: 8.5,
       printWidth: width,
       printHeight: height,
       isRotated: isRotated,
@@ -132,31 +132,31 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         <div class="print-label">
           <div class="print-content">
             <!-- 1. Store Header (Top) -->
-            <div style="font-family: 'Outfit', sans-serif; font-size: ${config.storeFontSize}; font-weight: 900; letter-spacing: 0.5px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; word-break: break-word;">
+            <div style="font-family: 'Outfit', sans-serif; font-size: ${config.storeFontSize}; font-weight: 900; letter-spacing: 0.3px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; max-width: 29mm; word-break: break-word;">
               ${storeName}
             </div>
-            <div style="font-size: ${config.subFontSize}; font-weight: 700; letter-spacing: 0.3px; color: #333333; text-transform: uppercase; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%;">
+            <div style="font-size: ${config.subFontSize}; font-weight: 700; letter-spacing: 0.2px; color: #333333; text-transform: uppercase; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
               Elegance — Mens Wear
             </div>
 
             <!-- 2. Product Name -->
-            <div style="font-size: ${config.prodFontSize}; font-weight: 800; color: #000000; margin: 1.5px auto 0 auto; width: 100%; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+            <div style="font-size: ${config.prodFontSize}; font-weight: 800; color: #000000; margin: 1.5px auto 0 auto; width: 100%; max-width: 29mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
               ${productName}
             </div>
 
             <!-- 3. Size & Color Spec -->
-            <div style="font-size: ${config.specFontSize}; color: #111111; font-weight: 700; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%;">
+            <div style="font-size: ${config.specFontSize}; color: #111111; font-weight: 700; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
               ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color ? ` • ${variant.color}` : ''}
             </div>
 
             <!-- 4. Barcode SVG (Center) -->
-            <div style="margin: 1.5px auto; width: 100%; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
+            <div style="margin: 1.5px auto; width: 100%; max-width: 29mm; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
               ${svgHtml}
             </div>
 
             <!-- 5. Price Tag (Bottom) -->
             ${showPrice ? `
-              <div style="border-top: 1px dashed #222222; width: 100%; padding-top: 1.5px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+              <div style="border-top: 1px dashed #222222; width: 100%; max-width: 29mm; padding-top: 1.5px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
                 ${hasDiscount ? `
                   <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
                     <span style="font-size: ${config.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
@@ -256,7 +256,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               justify-content: center !important;
               text-align: center !important;
               box-sizing: border-box !important;
-              padding: 1mm 1.5mm !important;
+              padding: 1.5mm 3mm !important;
               overflow: hidden !important;
             }
             .print-label:last-child {
@@ -264,7 +264,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               break-after: auto !important;
             }
             svg {
-              max-width: 100% !important;
+              max-width: 27mm !important;
+              width: 100% !important;
               height: auto !important;
               display: block !important;
               margin: 0 auto !important;
