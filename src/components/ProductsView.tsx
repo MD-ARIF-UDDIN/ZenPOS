@@ -29,7 +29,7 @@ export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): 
     }
   });
 
-  return `${reverseDate}${maxSerial + 1}`;
+  return `${reverseDate}-${maxSerial + 1}`;
 };
 
 export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) => {
