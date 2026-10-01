@@ -21,7 +21,7 @@ export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): 
   let maxSerial = 0;
   variantsList.forEach(v => {
     if (v.barcode && v.barcode.startsWith(reverseDate)) {
-      const serialPart = v.barcode.slice(reverseDate.length);
+      const serialPart = v.barcode.slice(reverseDate.length).replace(/^-/, '');
       const parsed = parseInt(serialPart, 10);
       if (!isNaN(parsed) && parsed > maxSerial) {
         maxSerial = parsed;
@@ -124,7 +124,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     try {
       setSavingVariant(true);
       // Check if barcode already exists
-      const exists = variants.find(v => v.barcode === varBarcode);
+      const formattedBc = varBarcode.trim().replace(/^(\d{8})(\d+)$/, '$1-$2');
+      const rawBc = varBarcode.trim().replace(/-/g, '');
+      const exists = variants.find(v => v.barcode && (v.barcode === varBarcode.trim() || v.barcode === formattedBc || v.barcode.replace(/-/g, '') === rawBc));
       if (exists) {
         showToast('Barcode already exists! Barcode must be unique.', 'warning');
         return;

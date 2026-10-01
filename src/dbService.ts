@@ -80,9 +80,18 @@ export const dbService = {
   },
 
   async saveVariant(variant: Omit<ProductVariant, 'id'> & { id?: string }): Promise<ProductVariant> {
+    const payload = { ...variant };
+    if (payload.barcode) {
+      const bc = payload.barcode.trim();
+      const match = bc.match(/^(\d{8})(\d+)$/);
+      if (match) {
+        payload.barcode = `${match[1]}-${match[2]}`;
+      }
+    }
+
     const { data, error } = await supabase
       .from('product_variants')
-      .upsert(variant)
+      .upsert(payload)
       .select()
       .single();
     if (error) throw error;
