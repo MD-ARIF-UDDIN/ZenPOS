@@ -16,8 +16,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   const [copies, setCopies] = useState<number>(1);
   const [labelSize, setLabelSize] = useState<LabelSizeType>('thermal-35-45');
   const [orientation, setOrientation] = useState<OrientationType>('normal');
-  const [offsetX, setOffsetX] = useState<number>(0); // 0mm centered
-  const [offsetY, setOffsetY] = useState<number>(0); // 0mm centered
+  const [offsetX, setOffsetX] = useState<number>(-1); // default -1mm left
+  const [offsetY, setOffsetY] = useState<number>(6); // default +6mm down
   const [storeName, setStoreName] = useState<string>('RAJMAHAL');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
@@ -389,7 +389,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             </select>
           </div>
 
-          <div style={{ width: '120px' }}>
+          <div style={{ width: '130px' }}>
             <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Nudge Left/Right</label>
             <select
               className="form-control"
@@ -399,23 +399,23 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             >
               {[-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                 <option key={n} value={n}>
-                  {n === 0 ? '0mm (Centered)' : (n > 0 ? `+${n}mm Right` : `${n}mm Left`)}
+                  {n === -1 ? '-1mm Left (Default)' : (n === 0 ? '0mm (Center)' : (n > 0 ? `+${n}mm Right` : `${n}mm Left`))}
                 </option>
               ))}
             </select>
           </div>
 
-          <div style={{ width: '110px' }}>
+          <div style={{ width: '130px' }}>
             <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Nudge Up/Down</label>
             <select
               className="form-control"
               value={offsetY}
               onChange={e => setOffsetY(Number(e.target.value))}
-              style={{ height: '32px', fontSize: '12px', padding: '4px 6px' }}
+              style={{ height: '32px', fontSize: '12px', padding: '4px 6px', fontWeight: 700 }}
             >
               {[-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                 <option key={n} value={n}>
-                  {n === 0 ? '0mm (Centered)' : (n > 0 ? `+${n}mm Down` : `${n}mm Up`)}
+                  {n === 6 ? '+6mm Down (Default)' : (n === 0 ? '0mm (Center)' : (n > 0 ? `+${n}mm Down` : `${n}mm Up`))}
                 </option>
               ))}
             </select>
@@ -697,7 +697,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         {/* Modal Footer Controls */}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            🖨️ Geometrically centered for 45mm x 35mm rolls.
+            🖨️ Calibrated for 35mm x 45mm Vertical (-1mm Left, +6mm Down default).
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
