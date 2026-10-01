@@ -14,10 +14,10 @@ type OrientationType = 'normal' | 'rotated-minus-90' | 'rotated-plus-90';
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
   const [copies, setCopies] = useState<number>(1);
-  const [labelSize, setLabelSize] = useState<LabelSizeType>('thermal-45-35');
-  const [orientation, setOrientation] = useState<OrientationType>('rotated-minus-90');
-  const [offsetX, setOffsetX] = useState<number>(0); // true page horizontal nudge in mm
-  const [offsetY, setOffsetY] = useState<number>(0); // true page vertical nudge in mm
+  const [labelSize, setLabelSize] = useState<LabelSizeType>('thermal-35-45');
+  const [orientation, setOrientation] = useState<OrientationType>('normal');
+  const [offsetX, setOffsetX] = useState<number>(0); // 0mm centered
+  const [offsetY, setOffsetY] = useState<number>(0); // 0mm centered
   const [storeName, setStoreName] = useState<string>('RAJMAHAL');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
@@ -26,21 +26,21 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   const barcodeRefs = useRef<(SVGSVGElement | null)[]>([]);
 
   const getSizeConfig = (size: LabelSizeType, orient: OrientationType) => {
-    let width = '45mm';
-    let height = '35mm';
-    let cardW = '200px';
-    let cardH = '160px';
+    let width = '35mm';
+    let height = '45mm';
+    let cardW = '160px';
+    let cardH = '205px';
 
-    if (size === 'thermal-45-35') {
-      width = '45mm';
-      height = '35mm';
-      cardW = '200px';
-      cardH = '160px';
-    } else if (size === 'thermal-35-45') {
+    if (size === 'thermal-35-45') {
       width = '35mm';
       height = '45mm';
       cardW = '160px';
       cardH = '205px';
+    } else if (size === 'thermal-45-35') {
+      width = '45mm';
+      height = '35mm';
+      cardW = '200px';
+      cardH = '160px';
     } else if (size === 'thermal-50-30') {
       width = '50mm';
       height = '30mm';
@@ -366,8 +366,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               onChange={e => setLabelSize(e.target.value as LabelSizeType)}
               style={{ height: '32px', fontSize: '12px', padding: '4px 8px' }}
             >
-              <option value="thermal-45-35">45mm x 35mm (Standard Roll)</option>
-              <option value="thermal-35-45">35mm x 45mm (Tall Roll)</option>
+              <option value="thermal-35-45">35mm x 45mm (Vertical / Portrait — Standard)</option>
+              <option value="thermal-45-35">45mm x 35mm (Horizontal / Landscape)</option>
               <option value="thermal-50-30">50mm x 30mm (Wide Roll)</option>
               <option value="thermal-38-25">38mm x 25mm (Compact)</option>
               <option value="compact">Jewelry / Mini Tag (30x20)</option>
@@ -382,9 +382,9 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               onChange={e => setOrientation(e.target.value as OrientationType)}
               style={{ height: '32px', fontSize: '12px', padding: '4px 8px' }}
             >
-              <option value="rotated-minus-90">🔄 Rotated -90° (Vertical on 45x35mm)</option>
-              <option value="rotated-plus-90">🔄 Rotated +90° (Inverted Vertical)</option>
-              <option value="normal">➡️ Normal (0° Horizontal Flow)</option>
+              <option value="normal">➡️ Normal (0° Direct Flow — Standard)</option>
+              <option value="rotated-minus-90">🔄 Rotated -90° (Vertical on Landscape Roll)</option>
+              <option value="rotated-plus-90">🔄 Rotated +90° (Inverted)</option>
             </select>
           </div>
 
