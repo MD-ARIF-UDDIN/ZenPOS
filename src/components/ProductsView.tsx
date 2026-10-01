@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
-import { useNotificationStore } from '../store';
-import { Plus, Trash2, Tag, Printer, Sparkles, Search } from 'lucide-react';
-import { BarcodeLabelModal } from './BarcodeLabelModal';
+import { Plus, Trash2, Tag, Printer, Search } from 'lucide-react';
 import { Pagination } from './Pagination';
 
 interface ProductsViewProps {
@@ -628,31 +626,31 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
       {/* CREATE PRODUCT MODAL */}
       {showProductModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '420px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
-            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Add New Clothing Product</h3>
-            <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto', padding: '24px', borderRadius: 'var(--radius-md)' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '18px', fontWeight: 800 }}>Add New Clothing Product</h3>
+            <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group">
-                <label className="form-label">Product Name *</label>
-                <input type="text" className="form-control" value={newProductName} onChange={e => setNewProductName(e.target.value)} required placeholder="e.g. Slim Denim Jeans" />
+                <label className="form-label" style={{ fontWeight: 600 }}>Product Name *</label>
+                <input type="text" className="form-control" value={newProductName} onChange={e => setNewProductName(e.target.value)} required placeholder="e.g. Slim Denim Jeans" style={{ height: '38px', fontSize: '13px' }} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="form-group">
-                  <label className="form-label">Category</label>
-                  <input type="text" className="form-control" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="e.g. Pants" />
+                  <label className="form-label" style={{ fontWeight: 600 }}>Category</label>
+                  <input type="text" className="form-control" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="e.g. Pants" style={{ height: '38px', fontSize: '13px' }} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Brand</label>
-                  <input type="text" className="form-control" value={newProductBrand} onChange={e => setNewProductBrand(e.target.value)} placeholder="e.g. Levi's" />
+                  <label className="form-label" style={{ fontWeight: 600 }}>Brand</label>
+                  <input type="text" className="form-control" value={newProductBrand} onChange={e => setNewProductBrand(e.target.value)} placeholder="e.g. Levi's" style={{ height: '38px', fontSize: '13px' }} />
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Description</label>
-                <textarea className="form-control" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} placeholder="Product description..." rows={2} style={{ height: 'auto' }} />
+                <label className="form-label" style={{ fontWeight: 600 }}>Description</label>
+                <textarea className="form-control" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} placeholder="Product description..." rows={3} style={{ height: 'auto', fontSize: '13px' }} />
               </div>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowProductModal(false)}>Cancel</button>
-                 <button type="submit" className="btn btn-primary" disabled={savingProduct}>
+                 <button type="submit" className="btn btn-primary" disabled={savingProduct} style={{ fontWeight: 700, padding: '8px 18px' }}>
                    {savingProduct ? 'Creating...' : 'Create Product'}
                  </button>
               </div>
@@ -663,37 +661,37 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
       {/* CREATE MULTI-VARIANT BATCH MODAL */}
       {showVariantModal && activeProduct && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '14px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '860px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: '20px', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '1100px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: '24px', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             
             {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', marginBottom: '16px' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                <h3 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: 'var(--text-primary)' }}>
                   Add Variants — <span style={{ color: 'var(--color-primary)' }}>{activeProduct.name}</span>
                 </h3>
-                <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
                   Select multiple sizes or colors to generate all variant rows at once with sequential barcodes.
                 </p>
               </div>
               <button 
                 type="button" 
                 onClick={() => setShowVariantModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', padding: '4px 8px' }}
               >
                 ✕
               </button>
             </div>
 
             {/* Quick Generator Toolbar */}
-            <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ backgroundColor: 'var(--bg-primary)', padding: '14px 18px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               
               {/* Quick Multi-Size Selector */}
               <div>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '5px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '8px' }}>
                   ⚡ Quick Multi-Size Selector (Click to toggle variant rows):
                 </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '38', '40', '42', '44', 'Free Size'].map(s => {
                     const isSelected = variantRows.some(r => r.size === s);
                     return (
@@ -702,9 +700,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                         type="button"
                         onClick={() => toggleSizeInBatch(s)}
                         style={{
-                          padding: '4px 10px',
+                          padding: '6px 14px',
                           borderRadius: '6px',
-                          fontSize: '11.5px',
+                          fontSize: '12.5px',
                           fontWeight: 700,
                           cursor: 'pointer',
                           border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
@@ -721,9 +719,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               </div>
 
               {/* Common Batch Inputs (Color, Retail Price, Cost Price) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '10px', alignItems: 'flex-end', paddingTop: '4px', borderTop: '1px dashed #cbd5e1' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '14px', alignItems: 'flex-end', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
                 <div>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
                     Default Color (Applies to rows)
                   </label>
                   <input 
@@ -732,12 +730,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     value={commonColor} 
                     onChange={e => handleApplyCommonColor(e.target.value)}
                     placeholder="e.g. Navy Blue, White, Black"
-                    style={{ height: '32px', fontSize: '12px' }}
+                    style={{ height: '36px', fontSize: '13px' }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
                     Selling Price (৳) *
                   </label>
                   <input 
@@ -746,12 +744,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     value={commonSellingPrice || ''} 
                     onChange={e => handleApplyCommonPrice(Number(e.target.value), commonPurchasePrice)}
                     placeholder="e.g. 1250"
-                    style={{ height: '32px', fontSize: '12px', fontWeight: 700 }}
+                    style={{ height: '36px', fontSize: '13px', fontWeight: 700 }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
                     Purchase / Cost (৳) (Optional)
                   </label>
                   <input 
@@ -760,31 +758,31 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     value={commonPurchasePrice || ''} 
                     onChange={e => handleApplyCommonPrice(commonSellingPrice, Number(e.target.value))}
                     placeholder="Cost (Optional)"
-                    style={{ height: '32px', fontSize: '12px' }}
+                    style={{ height: '36px', fontSize: '13px' }}
                   />
                 </div>
               </div>
             </div>
 
             {/* Table of Variant Rows */}
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: '12px' }}>
-              <table className="table" style={{ margin: 0, fontSize: '12px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
+              <table className="table" style={{ margin: 0, fontSize: '13px' }}>
                 <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f1f5f9', zIndex: 2 }}>
                   <tr>
-                    <th style={{ width: '40px', textAlign: 'center' }}>#</th>
-                    <th style={{ width: '120px' }}>Size *</th>
-                    <th style={{ width: '140px' }}>Color *</th>
+                    <th style={{ width: '45px', textAlign: 'center' }}>#</th>
+                    <th style={{ width: '130px' }}>Size *</th>
+                    <th style={{ width: '160px' }}>Color *</th>
                     <th>Barcode (Unique) *</th>
-                    <th style={{ width: '110px' }}>Cost (৳)</th>
-                    <th style={{ width: '120px' }}>Price (৳) *</th>
+                    <th style={{ width: '130px' }}>Cost (৳)</th>
+                    <th style={{ width: '140px' }}>Price (৳) *</th>
                     <th style={{ width: '50px', textAlign: 'center' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {variantRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
-                        No variant rows selected. Click a size chip above or click <strong>"+ Add Row"</strong>.
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                        No variant rows selected. Click a size chip above or click <strong>"+ Add Another Row"</strong>.
                       </td>
                     </tr>
                   ) : (
@@ -800,7 +798,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                             value={row.size} 
                             onChange={e => handleUpdateRow(row.tempId, 'size', e.target.value)}
                             placeholder="Size (e.g. M)" 
-                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px', fontWeight: 600 }}
+                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px', fontWeight: 600 }}
                           />
                         </td>
                         <td>
@@ -810,33 +808,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                             value={row.color} 
                             onChange={e => handleUpdateRow(row.tempId, 'color', e.target.value)}
                             placeholder="Color" 
-                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px' }}
+                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px' }}
                           />
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                            <input 
-                              type="text" 
-                              className="form-control" 
-                              value={row.barcode} 
-                              onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
-                              placeholder="Barcode" 
-                              style={{ height: '30px', fontSize: '11.5px', fontFamily: 'monospace', padding: '2px 6px', fontWeight: 600 }}
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              title="Regenerate Barcode"
-                              style={{ padding: '0 6px', height: '30px', fontSize: '10px' }}
-                              onClick={() => {
-                                const existingBarcodes = variantRows.filter(r => r.tempId !== row.tempId).map(r => r.barcode);
-                                const [newBc] = generateNextBarcodes(variants, 1, existingBarcodes);
-                                handleUpdateRow(row.tempId, 'barcode', newBc);
-                              }}
-                            >
-                              <Sparkles size={11} />
-                            </button>
-                          </div>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            value={row.barcode} 
+                            onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
+                            placeholder="Barcode" 
+                            style={{ height: '36px', fontSize: '13px', fontFamily: 'monospace', padding: '4px 8px', fontWeight: 600 }}
+                          />
                         </td>
                         <td>
                           <input 
@@ -846,7 +829,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                             value={row.purchase_price || ''} 
                             onChange={e => handleUpdateRow(row.tempId, 'purchase_price', Number(e.target.value))}
                             placeholder="0.00" 
-                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px' }}
+                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px' }}
                           />
                         </td>
                         <td>
@@ -857,7 +840,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                             value={row.selling_price || ''} 
                             onChange={e => handleUpdateRow(row.tempId, 'selling_price', Number(e.target.value))}
                             placeholder="Price *" 
-                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined }}
+                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined }}
                           />
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -866,9 +849,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                             className="btn-icon text-danger"
                             onClick={() => handleRemoveRow(row.tempId)}
                             title="Remove this row"
-                            style={{ padding: '4px', cursor: 'pointer' }}
+                            style={{ padding: '6px', cursor: 'pointer' }}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={16} />
                           </button>
                         </td>
                       </tr>
@@ -879,18 +862,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
             </div>
 
             {/* Action Buttons Footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <button 
                 type="button" 
-                className="btn btn-secondary btn-sm" 
+                className="btn btn-secondary" 
                 onClick={handleAddCustomRow}
-                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '38px', padding: '0 14px', fontWeight: 600 }}
               >
-                <Plus size={14} /> Add Another Row
+                <Plus size={15} /> Add Another Row
               </button>
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowVariantModal(false)}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowVariantModal(false)} style={{ height: '38px', padding: '0 16px' }}>
                   Cancel
                 </button>
                 <button 
@@ -898,7 +881,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   className="btn btn-primary" 
                   onClick={handleCreateBatchVariants} 
                   disabled={savingVariant || variantRows.length === 0}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, height: '38px', padding: '0 20px' }}
                 >
                   {savingVariant ? 'Saving...' : `Create ${variantRows.length} ${variantRows.length === 1 ? 'Variant' : 'Variants'}`}
                 </button>
