@@ -65,6 +65,17 @@ export const dbService = {
     clearPosCache(['products', 'variants']);
   },
 
+  async clearAllProducts(): Promise<void> {
+    const { data: prods } = await supabase.from('products').select('id');
+    if (prods && prods.length > 0) {
+      const ids = prods.map(p => p.id);
+      await supabase.from('product_variants').delete().in('product_id', ids);
+      const { error } = await supabase.from('products').delete().in('id', ids);
+      if (error) throw error;
+    }
+    clearPosCache(['products', 'variants', 'stock_ledger']);
+  },
+
   async getVariants(forceRefresh = false): Promise<ProductVariant[]> {
     const now = Date.now();
     if (!forceRefresh && cache.variants && (now - cache.variants.timestamp < CACHE_TTL_MS)) {
@@ -95,7 +106,21 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
-    clearPosCache(['variants']);
+
+    if (!variant.id && data && data.stock_quantity > 0) {
+      try {
+        await supabase.from('stock_ledger').insert({
+          variant_id: data.id,
+          transaction_type: 'INITIAL_STOCK',
+          quantity_change: data.stock_quantity,
+          notes: 'Initial stock entered during variant creation'
+        });
+      } catch (ledgerErr) {
+        console.warn('Failed to record initial stock ledger', ledgerErr);
+      }
+    }
+
+    clearPosCache(['variants', 'stock_ledger']);
     return data;
   },
 

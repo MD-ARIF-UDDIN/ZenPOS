@@ -1,28 +1,32 @@
-import { ShoppingCart, Shirt, TrendingUp, AlertTriangle, Truck, Users, FileText, X, Receipt } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ShoppingCart, Shirt, TrendingUp, AlertTriangle, Users, FileText, X, Receipt } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
 
 interface SidebarProps {
-  currentTab: string;
-  setTab: (tab: string) => void;
+  currentTab?: string;
+  setTab?: (tab: string) => void;
   lowStockCount: number;
   isOpen?: boolean;
   onClose?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, lowStockCount, isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount, isOpen, onClose }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activePath = location.pathname.substring(1) || 'pos';
+
   const menuItems = [
-    { id: 'pos', label: 'POS Checkout', icon: ShoppingCart },
-    { id: 'products', label: 'Products', icon: Shirt },
-    { id: 'purchases', label: 'Purchases', icon: Truck },
-    { id: 'stock', label: 'Stock & Inventory', icon: AlertTriangle, badge: lowStockCount > 0 ? lowStockCount : undefined },
-    { id: 'sales', label: 'Sales History', icon: FileText },
-    { id: 'expenses', label: 'Expenses', icon: Receipt },
-    { id: 'users', label: 'Staff Management', icon: Users },
-    { id: 'reports', label: 'Reports', icon: TrendingUp },
+    { id: 'pos', path: '/pos', label: 'POS Checkout', icon: ShoppingCart },
+    { id: 'products', path: '/products', label: 'Products', icon: Shirt },
+    { id: 'stock', path: '/stock', label: 'Stock & Inventory', icon: AlertTriangle, badge: lowStockCount > 0 ? lowStockCount : undefined },
+    { id: 'sales', path: '/sales', label: 'Sales History', icon: FileText },
+    { id: 'expenses', path: '/expenses', label: 'Expenses', icon: Receipt },
+    { id: 'users', path: '/users', label: 'Staff Management', icon: Users },
+    { id: 'reports', path: '/reports', label: 'Reports', icon: TrendingUp },
   ];
 
-  const handleItemClick = (tabId: string) => {
-    setTab(tabId);
+  const handleItemClick = (path: string) => {
+    navigate(path);
     onClose?.();
   };
 
@@ -83,9 +87,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, lowStockCo
           return (
             <li key={item.id}>
               <a
-                onClick={() => handleItemClick(item.id)}
-                className={`sidebar-item ${currentTab === item.id ? 'active' : ''}`}
-                style={{ position: 'relative' }}
+                onClick={() => handleItemClick(item.path)}
+                className={`sidebar-item ${activePath === item.id || location.pathname === item.path ? 'active' : ''}`}
+                style={{ position: 'relative', cursor: 'pointer' }}
               >
                 <Icon size={17} />
                 <span>{item.label}</span>

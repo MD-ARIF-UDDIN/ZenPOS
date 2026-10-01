@@ -1,46 +1,443 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2, Tag, Printer, Search } from 'lucide-react';
+import { Plus, Trash2, Tag, Printer, Search, Edit3, Boxes, Check, ChevronDown } from 'lucide-react';
 import { BarcodeLabelModal } from './BarcodeLabelModal';
+import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { Pagination } from './Pagination';
 
 interface ProductsViewProps {
   onRefreshStats: () => void;
 }
 
-export const generateNextBarcodes = (variantsList: { barcode?: string }[] = [], count: number = 1, extraExisting: string[] = []): string[] => {
+const getReverseDate = (): string => {
   const now = new Date();
   const year = now.getFullYear().toString();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${year}${month}${day}`; // e.g. "20261001"
-  const reverseDate = todayStr.split('').reverse().join(''); // e.g. "10016202"
+  const todayStr = `${year}${month}${day}`; // e.g. "20261002"
+  return todayStr.split('').reverse().join(''); // e.g. "20016202"
+};
 
+const getNextSerialForBundle = (
+  variantsList: { barcode?: string }[],
+  reverseDate: string,
+  bundleNo: string | number
+): number => {
+  const b = (bundleNo?.toString().trim()) || '1';
+  const prefix = `${reverseDate}-${b}-`;
   let maxSerial = 0;
-  const checkBarcode = (bc?: string) => {
-    if (bc && bc.startsWith(reverseDate)) {
-      const serialPart = bc.slice(reverseDate.length).replace(/^-/, '');
+  for (const v of variantsList) {
+    if (v.barcode && v.barcode.startsWith(prefix)) {
+      const serialPart = v.barcode.substring(prefix.length);
       const parsed = parseInt(serialPart, 10);
       if (!isNaN(parsed) && parsed > maxSerial) {
         maxSerial = parsed;
       }
     }
-  };
-
-  variantsList.forEach(v => checkBarcode(v.barcode));
-  extraExisting.forEach(bc => checkBarcode(bc));
-
-  const result: string[] = [];
-  for (let i = 1; i <= count; i++) {
-    result.push(`${reverseDate}-${maxSerial + i}`);
   }
-  return result;
+  return maxSerial + 1;
 };
 
-export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): string => {
-  return generateNextBarcodes(variantsList, 1)[0];
+interface ColorOption {
+  name: string;
+  hex: string;
+}
+
+const COLOR_PRESETS: ColorOption[] = [
+  { name: 'None', hex: 'transparent' },
+  { name: 'Black', hex: '#111827' },
+  { name: 'White', hex: '#ffffff' },
+  { name: 'Navy Blue', hex: '#1e3a8a' },
+  { name: 'Royal Blue', hex: '#2563eb' },
+  { name: 'Sky Blue', hex: '#38bdf8' },
+  { name: 'Red', hex: '#dc2626' },
+  { name: 'Maroon', hex: '#881337' },
+  { name: 'Dark Green', hex: '#166534' },
+  { name: 'Olive Green', hex: '#4d7c0f' },
+  { name: 'Grey', hex: '#64748b' },
+  { name: 'Charcoal', hex: '#334155' },
+  { name: 'Beige', hex: '#d4b996' },
+  { name: 'Cream', hex: '#fef3c7' },
+  { name: 'Brown', hex: '#78350f' },
+  { name: 'Tan', hex: '#d97706' },
+  { name: 'Yellow', hex: '#eab308' },
+  { name: 'Mustard', hex: '#ca8a04' },
+  { name: 'Orange', hex: '#ea580c' },
+  { name: 'Pink', hex: '#ec4899' },
+  { name: 'Purple', hex: '#9333ea' }
+];
+
+interface ColorComboboxProps {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}
+
+const ColorCombobox: React.FC<ColorComboboxProps> = ({ value, onChange, placeholder = 'Select / Type', style }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [openUpwards, setOpenUpwards] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const updatePosition = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const modal = containerRef.current.closest('.card') || document.body;
+      const modalRect = modal.getBoundingClientRect();
+      const spaceBelowInModal = modalRect.bottom - rect.bottom;
+      const spaceBelowInWindow = window.innerHeight - rect.bottom;
+      
+      const shouldOpenUp = (spaceBelowInModal < 155 || spaceBelowInWindow < 155) && (rect.top > modalRect.top + 60);
+      setOpenUpwards(shouldOpenUp);
+    }
+  };
+
+  const toggleDropdown = () => {
+    if (!isOpen) {
+      updatePosition();
+    }
+    setIsOpen(prev => !prev);
+  };
+
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    updatePosition();
+    setIsOpen(true);
+    e.target.select();
+  };
+
+  // Show all presets if value matches an existing preset or is empty, or filter if actively typing a custom search
+  const isExactPreset = COLOR_PRESETS.some(c => c.name.toLowerCase() === (value || '').trim().toLowerCase());
+  const filtered = (isExactPreset || !value)
+    ? COLOR_PRESETS
+    : COLOR_PRESETS.filter(c => 
+        c.name.toLowerCase().includes(value.toLowerCase()) || c.name === 'None'
+      );
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', boxSizing: 'border-box', ...style }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', boxSizing: 'border-box' }}>
+        <input
+          type="text"
+          className="form-control"
+          value={value}
+          onChange={e => {
+            onChange(e.target.value);
+            updatePosition();
+            setIsOpen(true);
+          }}
+          onFocus={handleInputFocus}
+          placeholder={placeholder}
+          style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, height: '28px', fontSize: '12px', paddingRight: '22px', paddingLeft: '8px' }}
+        />
+        <button
+          type="button"
+          onClick={toggleDropdown}
+          tabIndex={-1}
+          style={{
+            position: 'absolute',
+            right: '2px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '3px',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <ChevronDown size={12} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: openUpwards ? 'auto' : 'calc(100% + 2px)',
+            bottom: openUpwards ? 'calc(100% + 2px)' : 'auto',
+            left: 0,
+            width: '185px',
+            zIndex: 9999,
+            backgroundColor: '#ffffff',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            boxShadow: '0 8px 20px -4px rgba(0,0,0,0.2), 0 4px 8px -4px rgba(0,0,0,0.1)',
+            maxHeight: '145px',
+            overflowY: 'auto',
+            padding: '3px'
+          }}
+        >
+          {filtered.length === 0 ? (
+            <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-muted)' }}>
+              Custom color: <strong>"{value}"</strong>
+            </div>
+          ) : (
+            filtered.map(color => {
+              const isSelected = value?.toLowerCase() === color.name.toLowerCase();
+              return (
+                <div
+                  key={color.name}
+                  onClick={() => {
+                    onChange(color.name);
+                    setIsOpen(false);
+                  }}
+                  style={{
+                    padding: '5px 8px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    borderRadius: '5px',
+                    backgroundColor: isSelected ? 'var(--color-primary-light, #eff6ff)' : 'transparent',
+                    color: isSelected ? 'var(--color-primary, #2563eb)' : 'var(--text-primary)',
+                    fontWeight: isSelected ? 700 : 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    marginBottom: '1px'
+                  }}
+                  onMouseEnter={e => {
+                    if (!isSelected) e.currentTarget.style.backgroundColor = '#f1f5f9';
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {color.name === 'None' ? (
+                      <span style={{ 
+                        width: '13px', 
+                        height: '13px', 
+                        borderRadius: '50%', 
+                        border: '1.5px dashed #94a3b8', 
+                        display: 'inline-block' 
+                      }} />
+                    ) : (
+                      <span style={{ 
+                        width: '13px', 
+                        height: '13px', 
+                        borderRadius: '50%', 
+                        backgroundColor: color.hex, 
+                        border: color.name === 'White' || color.name === 'Cream' ? '1px solid #cbd5e1' : '1px solid rgba(0,0,0,0.1)',
+                        display: 'inline-block',
+                        flexShrink: 0
+                      }} />
+                    )}
+                    <span>{color.name}</span>
+                  </div>
+                  {isSelected && <span style={{ fontSize: '12px', fontWeight: 800 }}>✓</span>}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SIZE_PRESETS = [
+  'XS',
+  'S',
+  'M',
+  'L',
+  'XL',
+  'XXL',
+  'XXXL',
+  '4XL',
+  '5XL',
+  'Free Size',
+  'One Size',
+  // Numeric Pant / Waist / Shoe Sizes
+  '24',
+  '26',
+  '28',
+  '30',
+  '31',
+  '32',
+  '33',
+  '34',
+  '35',
+  '36',
+  '37',
+  '38',
+  '39',
+  '40',
+  '41',
+  '42',
+  '44',
+  '46',
+  '48',
+  '50',
+  '52',
+  '54'
+];
+
+interface SizeComboboxProps {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}
+
+const SizeCombobox: React.FC<SizeComboboxProps> = ({ value, onChange, placeholder = 'Size', style }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [openUpwards, setOpenUpwards] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const updatePosition = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const modal = containerRef.current.closest('.card') || document.body;
+      const modalRect = modal.getBoundingClientRect();
+      const spaceBelowInModal = modalRect.bottom - rect.bottom;
+      const spaceBelowInWindow = window.innerHeight - rect.bottom;
+      
+      const shouldOpenUp = (spaceBelowInModal < 155 || spaceBelowInWindow < 155) && (rect.top > modalRect.top + 60);
+      setOpenUpwards(shouldOpenUp);
+    }
+  };
+
+  const toggleDropdown = () => {
+    if (!isOpen) {
+      updatePosition();
+    }
+    setIsOpen(prev => !prev);
+  };
+
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    updatePosition();
+    setIsOpen(true);
+    e.target.select();
+  };
+
+  const isExactPreset = SIZE_PRESETS.some(s => s.toLowerCase() === (value || '').trim().toLowerCase());
+  const filtered = (isExactPreset || !value)
+    ? SIZE_PRESETS
+    : SIZE_PRESETS.filter(s => s.toLowerCase().includes(value.toLowerCase()));
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', boxSizing: 'border-box', ...style }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', boxSizing: 'border-box' }}>
+        <input
+          type="text"
+          className="form-control"
+          value={value}
+          onChange={e => {
+            onChange(e.target.value);
+            updatePosition();
+            setIsOpen(true);
+          }}
+          onFocus={handleInputFocus}
+          placeholder={placeholder}
+          style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, height: '28px', fontSize: '12px', fontWeight: 700, paddingRight: '22px', paddingLeft: '8px' }}
+          required
+        />
+        <button
+          type="button"
+          onClick={toggleDropdown}
+          tabIndex={-1}
+          style={{
+            position: 'absolute',
+            right: '2px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '3px',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <ChevronDown size={12} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: openUpwards ? 'auto' : 'calc(100% + 2px)',
+            bottom: openUpwards ? 'calc(100% + 2px)' : 'auto',
+            left: 0,
+            width: '120px',
+            zIndex: 9999,
+            backgroundColor: '#ffffff',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            boxShadow: '0 8px 20px -4px rgba(0,0,0,0.2), 0 4px 8px -4px rgba(0,0,0,0.1)',
+            maxHeight: '145px',
+            overflowY: 'auto',
+            padding: '3px'
+          }}
+        >
+          {filtered.length === 0 ? (
+            <div style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
+              Custom: <strong>"{value}"</strong>
+            </div>
+          ) : (
+            filtered.map(size => {
+              const isSelected = value?.toLowerCase() === size.toLowerCase();
+              return (
+                <div
+                  key={size}
+                  onClick={() => {
+                    onChange(size);
+                    setIsOpen(false);
+                  }}
+                  style={{
+                    padding: '5px 8px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    borderRadius: '5px',
+                    backgroundColor: isSelected ? 'var(--color-primary-light, #eff6ff)' : 'transparent',
+                    color: isSelected ? 'var(--color-primary, #2563eb)' : 'var(--text-primary)',
+                    fontWeight: isSelected ? 800 : 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '1px'
+                  }}
+                  onMouseEnter={e => {
+                    if (!isSelected) e.currentTarget.style.backgroundColor = '#f1f5f9';
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <span>{size}</span>
+                  {isSelected && <span style={{ fontSize: '11px', fontWeight: 800 }}>✓</span>}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 interface VariantRowDraft {
@@ -51,6 +448,7 @@ interface VariantRowDraft {
   sku: string;
   purchase_price: number;
   selling_price: number;
+  stock_quantity: number;
   min_stock_level: number;
 }
 
@@ -60,6 +458,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [barcodeVariantModal, setBarcodeVariantModal] = useState<ProductVariant | null>(null);
+  const [adjustingStockVariant, setAdjustingStockVariant] = useState<ProductVariant | null>(null);
   
   // Pagination and Search states
   const [prodSearch, setProdSearch] = useState('');
@@ -68,23 +467,34 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [varPage, setVarPage] = useState(1);
   const [varPageSize, setVarPageSize] = useState(10);
 
-  // Forms states
+  // Forms states (Product Create & Edit)
   const [showProductModal, setShowProductModal] = useState(false);
-  const [newProductName, setNewProductName] = useState('');
-  const [newProductCategory, setNewProductCategory] = useState('');
-  const [newProductBrand, setNewProductBrand] = useState('');
-  const [newProductDesc, setNewProductDesc] = useState('');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productFormName, setProductFormName] = useState('');
+  const [productFormCategory, setProductFormCategory] = useState('');
+  const [productFormBrand, setProductFormBrand] = useState('');
+  const [productFormDesc, setProductFormDesc] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
-  // Multi-variant creation states
+  // Multi-variant creation states with Bundle Number
   const [showVariantModal, setShowVariantModal] = useState(false);
+  const [bundleNumber, setBundleNumber] = useState('1');
   const [variantRows, setVariantRows] = useState<VariantRowDraft[]>([]);
-  const [commonColor, setCommonColor] = useState('Default');
-  const [commonSellingPrice, setCommonSellingPrice] = useState<number>(0);
-  const [commonPurchasePrice, setCommonPurchasePrice] = useState<number>(0);
   const [savingVariant, setSavingVariant] = useState(false);
   const [deletingVariantId, setDeletingVariantId] = useState<string | null>(null);
+
+  // Edit Variant / Stock Modal state
+  const [editVariantModal, setEditVariantModal] = useState<ProductVariant | null>(null);
+  const [editSku, setEditSku] = useState('');
+  const [editBarcode, setEditBarcode] = useState('');
+  const [editSize, setEditSize] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [editCostPrice, setEditCostPrice] = useState<number>(0);
+  const [editSellPrice, setEditSellPrice] = useState<number>(0);
+  const [editStockQty, setEditStockQty] = useState<number>(0);
+  const [editMinStock, setEditMinStock] = useState<number>(5);
+  const [savingEditVariant, setSavingEditVariant] = useState(false);
 
   const loadData = async () => {
     const [prodList, varList] = await Promise.all([
@@ -93,8 +503,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     ]);
     setProducts(prodList);
     setVariants(varList);
-    if (prodList.length > 0 && !activeProduct) {
-      setActiveProduct(prodList[0]);
+    if (prodList.length > 0) {
+      if (!activeProduct || !prodList.find(p => p.id === activeProduct.id)) {
+        setActiveProduct(prodList[0]);
+      }
+    } else {
+      setActiveProduct(null);
     }
   };
 
@@ -102,104 +516,149 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     loadData();
   }, []);
 
-  const handleCreateProduct = async (e: React.FormEvent) => {
+  const handleOpenAddProduct = () => {
+    setEditingProduct(null);
+    setProductFormName('');
+    setProductFormCategory('');
+    setProductFormBrand('');
+    setProductFormDesc('');
+    setShowProductModal(true);
+  };
+
+  const handleOpenEditProduct = (prod: Product) => {
+    setEditingProduct(prod);
+    setProductFormName(prod.name);
+    setProductFormCategory(prod.category || '');
+    setProductFormBrand(prod.brand || '');
+    setProductFormDesc(prod.description || '');
+    setShowProductModal(true);
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProductName.trim()) return;
+    if (!productFormName.trim()) return;
 
     try {
       setSavingProduct(true);
-      showToast('Creating product...', 'info');
+      showToast(editingProduct ? 'Updating product...' : 'Creating product...', 'info');
       const prod = await dbService.saveProduct({
-        name: newProductName,
-        category: newProductCategory,
-        brand: newProductBrand,
-        description: newProductDesc
+        ...(editingProduct ? { id: editingProduct.id } : {}),
+        name: productFormName.trim(),
+        category: productFormCategory.trim(),
+        brand: productFormBrand.trim(),
+        description: productFormDesc.trim()
       });
       setShowProductModal(false);
-      // Reset fields
-      setNewProductName('');
-      setNewProductCategory('');
-      setNewProductBrand('');
-      setNewProductDesc('');
+      setEditingProduct(null);
+      setProductFormName('');
+      setProductFormCategory('');
+      setProductFormBrand('');
+      setProductFormDesc('');
       await loadData();
       setActiveProduct(prod);
-      showToast('Product created successfully!', 'success');
+      onRefreshStats();
+      showToast(editingProduct ? 'Product updated successfully!' : 'Product created successfully!', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Error creating product', 'error');
+      showToast(err?.message || 'Error saving product', 'error');
     } finally {
       setSavingProduct(false);
     }
   };
 
+  const handleClearAllProducts = () => {
+    if (products.length === 0) return;
+    showConfirm(
+      'Clear All Products',
+      'Are you sure you want to delete ALL products and their variants? This action cannot be undone and will reset your catalog.',
+      async () => {
+        try {
+          showToast('Clearing all products...', 'info');
+          await dbService.clearAllProducts();
+          setProducts([]);
+          setVariants([]);
+          setActiveProduct(null);
+          setVariantRows([]);
+          await loadData();
+          onRefreshStats();
+          showToast('All products and variants have been cleared.', 'success');
+        } catch (err: any) {
+          showToast(err?.message || 'Failed to clear products', 'error');
+        }
+      }
+    );
+  };
+
   const handleOpenAddVariant = () => {
-    const nextBc = generateNextBarcode(variants);
-    setCommonColor('Default');
-    setCommonSellingPrice(0);
-    setCommonPurchasePrice(0);
+    const rev = getReverseDate();
+    const defaultBundle = '1';
+    setBundleNumber(defaultBundle);
+
+    const startSerial = getNextSerialForBundle(variants, rev, defaultBundle);
     setVariantRows([
       {
         tempId: Math.random().toString(36).substring(2, 9),
         size: 'M',
-        color: 'Default',
-        barcode: nextBc,
+        color: '',
+        barcode: `${rev}-${defaultBundle}-${startSerial}`,
         sku: '',
         purchase_price: 0,
         selling_price: 0,
+        stock_quantity: 0,
         min_stock_level: 5
       }
     ]);
     setShowVariantModal(true);
   };
 
-  const toggleSizeInBatch = (sizeName: string) => {
+  const handleBundleNumberChange = (newBundle: string) => {
+    setBundleNumber(newBundle);
+    const rev = getReverseDate();
+    const b = newBundle.trim() || '1';
+    const startSerial = getNextSerialForBundle(variants, rev, b);
+    setVariantRows(prev => prev.map((r, idx) => ({
+      ...r,
+      barcode: `${rev}-${b}-${startSerial + idx}`
+    })));
+  };
+
+  const handleAddRowWithSize = (sizeName: string) => {
+    const rev = getReverseDate();
+    const b = bundleNumber.trim() || '1';
+    const startSerial = getNextSerialForBundle(variants, rev, b);
     setVariantRows(prev => {
-      const exists = prev.find(r => r.size === sizeName);
-      if (exists) {
-        if (prev.length === 1) {
-          // If only 1, don't remove, just change size or notify
-          return prev.filter(r => r.tempId !== exists.tempId);
+      const newIndex = prev.length;
+      return [
+        ...prev,
+        {
+          tempId: Math.random().toString(36).substring(2, 9),
+          size: sizeName,
+          color: '',
+          barcode: `${rev}-${b}-${startSerial + newIndex}`,
+          sku: '',
+          purchase_price: 0,
+          selling_price: 0,
+          stock_quantity: 0,
+          min_stock_level: 5
         }
-        return prev.filter(r => r.tempId !== exists.tempId);
-      } else {
-        const existingBarcodes = prev.map(r => r.barcode);
-        const [nextBc] = generateNextBarcodes(variants, 1, existingBarcodes);
-        return [
-          ...prev,
-          {
-            tempId: Math.random().toString(36).substring(2, 9),
-            size: sizeName,
-            color: commonColor || 'Default',
-            barcode: nextBc,
-            sku: '',
-            purchase_price: commonPurchasePrice || 0,
-            selling_price: commonSellingPrice || 0,
-            min_stock_level: 5
-          }
-        ];
-      }
+      ];
     });
   };
 
-  const handleAddCustomRow = () => {
-    const existingBarcodes = variantRows.map(r => r.barcode);
-    const [nextBc] = generateNextBarcodes(variants, 1, existingBarcodes);
-    setVariantRows(prev => [
-      ...prev,
-      {
-        tempId: Math.random().toString(36).substring(2, 9),
-        size: 'Free Size',
-        color: commonColor || 'Default',
-        barcode: nextBc,
-        sku: '',
-        purchase_price: commonPurchasePrice || 0,
-        selling_price: commonSellingPrice || 0,
-        min_stock_level: 5
-      }
-    ]);
+  const handleAddEmptyRow = () => {
+    handleAddRowWithSize('');
   };
 
   const handleRemoveRow = (tempId: string) => {
-    setVariantRows(prev => prev.filter(r => r.tempId !== tempId));
+    const rev = getReverseDate();
+    const b = bundleNumber.trim() || '1';
+    const startSerial = getNextSerialForBundle(variants, rev, b);
+    setVariantRows(prev => {
+      const filtered = prev.filter(r => r.tempId !== tempId);
+      return filtered.map((r, idx) => ({
+        ...r,
+        barcode: `${rev}-${b}-${startSerial + idx}`
+      }));
+    });
   };
 
   const handleUpdateRow = (tempId: string, field: keyof VariantRowDraft, value: any) => {
@@ -209,21 +668,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       }
       return r;
     }));
-  };
-
-  const handleApplyCommonColor = (color: string) => {
-    setCommonColor(color);
-    setVariantRows(prev => prev.map(r => ({ ...r, color })));
-  };
-
-  const handleApplyCommonPrice = (sellPrice: number, costPrice: number) => {
-    setCommonSellingPrice(sellPrice);
-    setCommonPurchasePrice(costPrice);
-    setVariantRows(prev => prev.map(r => ({
-      ...r,
-      selling_price: sellPrice > 0 ? sellPrice : r.selling_price,
-      purchase_price: costPrice > 0 ? costPrice : r.purchase_price
-    })));
   };
 
   const handleCreateBatchVariants = async (e: React.FormEvent) => {
@@ -239,10 +683,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       const row = variantRows[i];
       if (!row.size.trim()) {
         showToast(`Row #${i + 1} is missing a Size.`, 'warning');
-        return;
-      }
-      if (!row.color.trim()) {
-        showToast(`Row #${i + 1} is missing a Color.`, 'warning');
         return;
       }
       if (!row.barcode.trim()) {
@@ -278,16 +718,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       showToast(`Creating ${variantRows.length} variant(s)...`, 'info');
 
       for (const row of variantRows) {
-        const generatedSku = row.sku || `${activeProduct.name.substring(0,3).toUpperCase()}-${row.color.substring(0,3).toUpperCase()}-${row.size}`;
+        const finalColor = row.color.trim() || 'None';
+        const generatedSku = row.sku || `${activeProduct.name.substring(0,3).toUpperCase()}-${finalColor.substring(0,3).toUpperCase()}-${row.size}`;
         await dbService.saveVariant({
           product_id: activeProduct.id,
           sku: generatedSku,
           barcode: row.barcode.trim(),
           size: row.size.trim(),
-          color: row.color.trim(),
+          color: finalColor,
           purchase_price: row.purchase_price || 0,
           selling_price: row.selling_price,
-          stock_quantity: 0,
+          stock_quantity: Math.max(0, Number(row.stock_quantity) || 0),
           min_stock_level: row.min_stock_level || 5
         });
       }
@@ -296,11 +737,73 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       setVariantRows([]);
       await loadData();
       onRefreshStats();
-      showToast(`Successfully created ${variantRows.length} variant(s)!`, 'success');
+      showToast(`Successfully created ${variantRows.length} variant(s) with initial stock!`, 'success');
     } catch (err: any) {
       showToast(err?.message || 'Error creating variants', 'error');
     } finally {
       setSavingVariant(false);
+    }
+  };
+
+  const handleOpenEditVariant = (v: ProductVariant) => {
+    setEditVariantModal(v);
+    setEditSku(v.sku);
+    setEditBarcode(v.barcode);
+    setEditSize(v.size);
+    setEditColor(v.color);
+    setEditCostPrice(v.purchase_price ?? 0);
+    setEditSellPrice(v.selling_price ?? 0);
+    setEditStockQty(v.stock_quantity ?? 0);
+    setEditMinStock(v.min_stock_level ?? 5);
+  };
+
+  const handleSaveEditVariant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editVariantModal) return;
+
+    if (!editBarcode.trim()) {
+      showToast('Barcode cannot be empty.', 'warning');
+      return;
+    }
+    if (editSellPrice <= 0) {
+      showToast('Selling price must be greater than zero.', 'warning');
+      return;
+    }
+
+    try {
+      setSavingEditVariant(true);
+      showToast('Saving variant & stock update...', 'info');
+
+      const oldStock = editVariantModal.stock_quantity ?? 0;
+      const newStock = Math.max(0, Number(editStockQty) || 0);
+
+      // Save variant updates
+      await dbService.saveVariant({
+        id: editVariantModal.id,
+        product_id: editVariantModal.product_id,
+        sku: editSku.trim() || editVariantModal.sku,
+        barcode: editBarcode.trim(),
+        size: editSize.trim() || editVariantModal.size,
+        color: editColor.trim() || editVariantModal.color,
+        purchase_price: Math.max(0, Number(editCostPrice) || 0),
+        selling_price: Number(editSellPrice),
+        stock_quantity: newStock,
+        min_stock_level: Math.max(0, Number(editMinStock) || 0)
+      });
+
+      // If stock changed on existing variant, adjust stock ledger
+      if (newStock !== oldStock) {
+        await dbService.adjustStock(editVariantModal.id, newStock, `Manual stock edit from Product catalog (${oldStock} -> ${newStock})`);
+      }
+
+      setEditVariantModal(null);
+      await loadData();
+      onRefreshStats();
+      showToast('Variant and stock updated successfully!', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update variant', 'error');
+    } finally {
+      setSavingEditVariant(false);
     }
   };
 
@@ -348,17 +851,59 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   // Filter variants for selected product
-  // Filter variants for selected product
   const activeVariants = variants.filter(v => v.product_id === activeProduct?.id);
   const paginatedVariants = activeVariants.slice((varPage - 1) * varPageSize, varPage * varPageSize);
 
-  // Filter products by search
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(prodSearch.toLowerCase()) ||
-    (p.category && p.category.toLowerCase().includes(prodSearch.toLowerCase())) ||
-    (p.brand && p.brand.toLowerCase().includes(prodSearch.toLowerCase()))
-  );
+  // Filter products by search (Supports Name, Category, Brand, SKU, and Barcode Scanning)
+  const filteredProducts = products.filter(p => {
+    if (!prodSearch.trim()) return true;
+    const q = prodSearch.trim().toLowerCase();
+    const rawQ = q.replace(/-/g, '');
+
+    // 1. Direct product match
+    if (
+      p.name.toLowerCase().includes(q) ||
+      (p.category && p.category.toLowerCase().includes(q)) ||
+      (p.brand && p.brand.toLowerCase().includes(q))
+    ) {
+      return true;
+    }
+
+    // 2. Barcode or SKU match across its variants
+    const match = variants.find(v => {
+      if (v.product_id !== p.id) return false;
+      const bc = (v.barcode || '').toLowerCase();
+      const rawBc = bc.replace(/-/g, '');
+      const sku = (v.sku || '').toLowerCase();
+      return bc.includes(q) || rawBc.includes(rawQ) || sku.includes(q);
+    });
+
+    return !!match;
+  });
   const paginatedProducts = filteredProducts.slice((prodPage - 1) * prodPageSize, prodPage * prodPageSize);
+
+  const handleBarcodeOrSearchSubmit = (val: string) => {
+    const q = val.trim();
+    if (!q) return;
+    const rawQ = q.replace(/-/g, '').toLowerCase();
+
+    // Look for exact or partial barcode / SKU match in all variants
+    const match = variants.find(v => {
+      const bc = (v.barcode || '').toLowerCase();
+      const rawBc = bc.replace(/-/g, '');
+      const sku = (v.sku || '').toLowerCase();
+      return bc === q.toLowerCase() || rawBc === rawQ || sku === q.toLowerCase() || bc.includes(q.toLowerCase());
+    });
+
+    if (match) {
+      const parentProd = products.find(p => p.id === match.product_id);
+      if (parentProd) {
+        setActiveProduct(parentProd);
+        setVarPage(1);
+        showToast(`Found: ${parentProd.name} (${match.size}/${match.color}) - ${match.barcode}`, 'success');
+      }
+    }
+  };
 
   return (
     <div className="products-layout" style={{ alignItems: 'start' }}>
@@ -370,22 +915,52 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
             <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>Products</h3>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredProducts.length} items cataloged</span>
           </div>
-          <button className="btn btn-primary btn-sm" style={{ padding: '4px 10px' }} onClick={() => setShowProductModal(true)}>
-            <Plus size={14} /> Add Product
-          </button>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {products.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 700, backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer' }}
+                onClick={handleClearAllProducts}
+                title="Clear all products and variants from database"
+              >
+                Clear All
+              </button>
+            )}
+            <button className="btn btn-primary btn-sm" style={{ padding: '4px 10px' }} onClick={handleOpenAddProduct}>
+              <Plus size={14} /> Add Product
+            </button>
+          </div>
         </div>
 
-        {/* Product Search */}
+        {/* Product & Barcode Search */}
         <div style={{ position: 'relative' }}>
           <Search size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
           <input 
             type="text" 
             className="form-control" 
-            placeholder="Search by name, category, brand..."
+            placeholder="Search name, brand, or scan barcode..."
             value={prodSearch}
             onChange={(e) => {
-              setProdSearch(e.target.value);
+              const val = e.target.value;
+              setProdSearch(val);
               setProdPage(1);
+              if (val.length >= 8) {
+                const rawVal = val.trim().replace(/-/g, '');
+                const found = variants.find(v => (v.barcode && (v.barcode.replace(/-/g, '') === rawVal || v.barcode === val.trim())));
+                if (found) {
+                  const parent = products.find(p => p.id === found.product_id);
+                  if (parent && parent.id !== activeProduct?.id) {
+                    setActiveProduct(parent);
+                  }
+                }
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleBarcodeOrSearchSubmit(prodSearch);
+              }
             }}
             style={{ paddingLeft: '28px', height: '32px', fontSize: '12px' }}
           />
@@ -423,9 +998,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     <span style={{ fontWeight: 700, fontSize: '12.5px', color: isSelected ? 'var(--color-primary)' : 'var(--text-primary)', maxWidth: '170px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {p.name}
                     </span>
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
-                      {p.category || 'General'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
+                        {p.category || 'General'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditProduct(p);
+                        }}
+                        title="Edit product details"
+                        style={{ background: 'none', border: 'none', padding: '2px', cursor: 'pointer', color: 'var(--text-muted)' }}
+                      >
+                        <Edit3 size={12} />
+                      </button>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
                     <span>{p.brand || 'No brand'}</span>
@@ -466,7 +1054,25 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '6px' }}>{activeProduct.description}</p>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => handleOpenEditProduct(activeProduct)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                  title="Edit Product Details"
+                >
+                  <Edit3 size={15} /> Edit Product
+                </button>
+                {activeVariants.length > 0 && (
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={() => setAdjustingStockVariant(activeVariants[0])}
+                    style={{ border: '1.5px solid #86efac', color: '#166534', backgroundColor: '#f0fdf4', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                    title="Adjust Stock"
+                  >
+                    <Boxes size={16} /> Adjust Stock
+                  </button>
+                )}
                 <button 
                   className="btn btn-secondary" 
                   onClick={handleOpenAddVariant}
@@ -474,7 +1080,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                 >
                   <Plus size={16} /> Add Variant
                 </button>
-                <button className="btn btn-danger" style={{ padding: '8px' }} onClick={() => handleDeleteProduct(activeProduct.id)} disabled={deletingProductId === activeProduct.id}>
+                <button className="btn btn-danger" style={{ padding: '8px' }} onClick={() => handleDeleteProduct(activeProduct.id)} disabled={deletingProductId === activeProduct.id} title="Delete Product">
                    {deletingProductId === activeProduct.id ? 'Deleting...' : <Trash2 size={16} />}
                 </button>
               </div>
@@ -496,7 +1102,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <th>Cost</th>
                       <th>Price</th>
                       <th>Stock</th>
-                      <th style={{ width: '130px', textAlign: 'center' }}>Actions</th>
+                      <th style={{ width: '210px', textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -523,18 +1129,51 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           <td>{v.color}</td>
                           <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
                           <td>৳{(v.selling_price ?? 0).toFixed(2)}</td>
-                          <td style={{ fontWeight: 600, color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                            {v.stock_quantity}
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() => setAdjustingStockVariant(v)}
+                              title="Click to adjust stock"
+                              style={{
+                                border: '1px solid',
+                                borderColor: v.stock_quantity <= v.min_stock_level ? '#fca5a5' : '#86efac',
+                                background: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
+                                fontWeight: 800,
+                                padding: '4px 12px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '12.5px'
+                              }}
+                            >
+                              {v.stock_quantity}
+                            </button>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                                onClick={() => setAdjustingStockVariant(v)}
+                                title="Adjust Stock"
+                              >
+                                <Boxes size={12} /> Stock
+                              </button>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                onClick={() => handleOpenEditVariant(v)}
+                                title="Edit Variant Details"
+                              >
+                                <Edit3 size={12} /> Edit
+                              </button>
                               <button 
                                 className="btn btn-secondary" 
                                 style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
                                 onClick={() => setBarcodeVariantModal(v)}
                                 title="Print Physical Barcode Sticker"
                               >
-                                <Printer size={12} /> Sticker
+                                <Printer size={12} />
                               </button>
                               <button 
                                 className="btn btn-danger" 
@@ -575,10 +1214,26 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button 
                             className="btn btn-secondary" 
+                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                            onClick={() => setAdjustingStockVariant(v)}
+                            title="Adjust Stock"
+                          >
+                            <Boxes size={12} /> Stock
+                          </button>
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                            onClick={() => handleOpenEditVariant(v)}
+                            title="Edit Details"
+                          >
+                            <Edit3 size={12} /> Edit
+                          </button>
+                          <button 
+                            className="btn btn-secondary" 
                             style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
                             onClick={() => setBarcodeVariantModal(v)}
                           >
-                            <Printer size={12} /> Sticker
+                            <Printer size={12} />
                           </button>
                           <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
                             {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
@@ -594,16 +1249,23 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
                         <div>Cost: <span style={{ fontWeight: 700 }}>৳{(v.purchase_price ?? 0).toFixed(2)}</span></div>
                         <div>Price: <span style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</span></div>
-                        <span style={{
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          backgroundColor: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                          color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)'
-                        }}>
+                        
+                        <button
+                          type="button"
+                          onClick={() => setAdjustingStockVariant(v)}
+                          style={{
+                            border: '1px solid #86efac',
+                            fontWeight: 800,
+                            padding: '3px 10px',
+                            borderRadius: '5px',
+                            fontSize: '11.5px',
+                            backgroundColor: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
+                            cursor: 'pointer'
+                          }}
+                        >
                           Stock: {v.stock_quantity}
-                        </span>
+                        </button>
                       </div>
                     </div>
                   ))
@@ -626,35 +1288,48 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         )}
       </div>
 
-      {/* CREATE PRODUCT MODAL */}
+      {/* CREATE / EDIT MOTHER PRODUCT MODAL */}
       {showProductModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' }}>
           <div className="card" style={{ width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto', padding: '24px', borderRadius: 'var(--radius-md)' }}>
-            <h3 style={{ marginBottom: '16px', fontSize: '18px', fontWeight: 800 }}>Add New Clothing Product</h3>
-            <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit3 size={18} style={{ color: 'var(--color-primary)' }} />
+                {editingProduct ? 'Edit Product' : 'Add New Clothing Product'}
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setShowProductModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px' }}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSaveProduct} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Product Name *</label>
-                <input type="text" className="form-control" value={newProductName} onChange={e => setNewProductName(e.target.value)} required placeholder="e.g. Slim Denim Jeans" style={{ height: '38px', fontSize: '13px' }} />
+                <input type="text" className="form-control" value={productFormName} onChange={e => setProductFormName(e.target.value)} required placeholder="e.g. Slim Denim Jeans" style={{ height: '38px', fontSize: '13px' }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 600 }}>Category</label>
-                  <input type="text" className="form-control" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="e.g. Pants" style={{ height: '38px', fontSize: '13px' }} />
+                  <input type="text" className="form-control" value={productFormCategory} onChange={e => setProductFormCategory(e.target.value)} placeholder="e.g. Pants" style={{ height: '38px', fontSize: '13px' }} />
                 </div>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 600 }}>Brand</label>
-                  <input type="text" className="form-control" value={newProductBrand} onChange={e => setNewProductBrand(e.target.value)} placeholder="e.g. Levi's" style={{ height: '38px', fontSize: '13px' }} />
+                  <input type="text" className="form-control" value={productFormBrand} onChange={e => setProductFormBrand(e.target.value)} placeholder="e.g. Levi's" style={{ height: '38px', fontSize: '13px' }} />
                 </div>
               </div>
               <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Description</label>
-                <textarea className="form-control" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} placeholder="Product description..." rows={3} style={{ height: 'auto', fontSize: '13px' }} />
+                <textarea className="form-control" value={productFormDesc} onChange={e => setProductFormDesc(e.target.value)} placeholder="Product description..." rows={3} style={{ height: 'auto', fontSize: '13px' }} />
               </div>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowProductModal(false)}>Cancel</button>
-                 <button type="submit" className="btn btn-primary" disabled={savingProduct} style={{ fontWeight: 700, padding: '8px 18px' }}>
-                   {savingProduct ? 'Creating...' : 'Create Product'}
-                 </button>
+                <button type="submit" className="btn btn-primary" disabled={savingProduct} style={{ fontWeight: 700, padding: '8px 18px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Check size={16} />
+                  {savingProduct ? 'Saving...' : (editingProduct ? 'Save Changes' : 'Create Product')}
+                </button>
               </div>
             </form>
           </div>
@@ -663,263 +1338,360 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
       {/* CREATE MULTI-VARIANT BATCH MODAL */}
       {showVariantModal && activeProduct && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '1100px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: '24px', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card" style={{ width: '95vw', maxWidth: '920px', display: 'flex', flexDirection: 'column', padding: '14px 18px', borderRadius: 'var(--radius-md)', boxShadow: '0 20px 50px rgba(0,0,0,0.25)', overflow: 'visible' }}>
             
             {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  Add Variants — <span style={{ color: 'var(--color-primary)' }}>{activeProduct.name}</span>
-                </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  Select multiple sizes or colors to generate all variant rows at once with sequential barcodes.
-                </p>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                Add Variants — <span style={{ color: 'var(--color-primary)' }}>{activeProduct.name}</span>
+              </h3>
               <button 
                 type="button" 
                 onClick={() => setShowVariantModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', padding: '4px 8px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '16px', padding: '2px 6px' }}
               >
                 ✕
               </button>
             </div>
 
-            {/* Quick Generator Toolbar */}
-            <div style={{ backgroundColor: 'var(--bg-primary)', padding: '14px 18px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflow: 'visible' }}>
               
-              {/* Quick Multi-Size Selector */}
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '8px' }}>
-                  ⚡ Quick Multi-Size Selector (Click to toggle variant rows):
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '38', '40', '42', '44', 'Free Size'].map(s => {
-                    const isSelected = variantRows.some(r => r.size === s);
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => toggleSizeInBatch(s)}
-                        style={{
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          fontSize: '12.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
-                          background: isSelected ? 'var(--color-primary)' : '#ffffff',
-                          color: isSelected ? '#ffffff' : 'var(--text-secondary)',
-                          transition: 'all 0.12s'
-                        }}
-                      >
-                        {isSelected ? `✓ ${s}` : `+ ${s}`}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Common Batch Inputs (Color, Retail Price, Cost Price) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '14px', alignItems: 'flex-end', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    Default Color (Applies to rows)
+              {/* Top Section: Bundle Number & Quick Auto-Fill */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                
+                {/* Bundle Number */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#1e293b' }}>
+                    Bundle No:
                   </label>
                   <input 
                     type="text" 
                     className="form-control" 
-                    value={commonColor} 
-                    onChange={e => handleApplyCommonColor(e.target.value)}
-                    placeholder="e.g. Navy Blue, White, Black"
-                    style={{ height: '36px', fontSize: '13px' }}
+                    value={bundleNumber} 
+                    onChange={e => handleBundleNumberChange(e.target.value)}
+                    placeholder="1"
+                    style={{ 
+                      width: '60px', 
+                      height: '28px', 
+                      fontSize: '13px', 
+                      fontWeight: 800, 
+                      textAlign: 'center',
+                      borderColor: 'var(--color-primary)',
+                      backgroundColor: '#ffffff',
+                      padding: '2px 4px'
+                    }}
                   />
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    Selling Price (৳) *
-                  </label>
-                  <input 
-                    type="number" 
-                    className="form-control" 
-                    value={commonSellingPrice || ''} 
-                    onChange={e => handleApplyCommonPrice(Number(e.target.value), commonPurchasePrice)}
-                    placeholder="e.g. 1250"
-                    style={{ height: '36px', fontSize: '13px', fontWeight: 700 }}
-                  />
+                {/* Quick Add Size Buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginRight: '2px' }}>
+                    + Size:
+                  </span>
+                  {['S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'Free Size'].map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleAddRowWithSize(s)}
+                      style={{
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: '#ffffff',
+                        color: 'var(--text-secondary)',
+                        transition: 'all 0.12s'
+                      }}
+                    >
+                      + {s}
+                    </button>
+                  ))}
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    Purchase / Cost (৳) (Optional)
-                  </label>
-                  <input 
-                    type="number" 
-                    className="form-control" 
-                    value={commonPurchasePrice || ''} 
-                    onChange={e => handleApplyCommonPrice(commonSellingPrice, Number(e.target.value))}
-                    placeholder="Cost (Optional)"
-                    style={{ height: '36px', fontSize: '13px' }}
-                  />
-                </div>
               </div>
-            </div>
 
-            {/* Table of Variant Rows */}
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
-              <table className="table" style={{ margin: 0, fontSize: '13px' }}>
-                <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f1f5f9', zIndex: 2 }}>
-                  <tr>
-                    <th style={{ width: '45px', textAlign: 'center' }}>#</th>
-                    <th style={{ width: '130px' }}>Size *</th>
-                    <th style={{ width: '160px' }}>Color *</th>
-                    <th>Barcode (Unique) *</th>
-                    <th style={{ width: '130px' }}>Cost (৳)</th>
-                    <th style={{ width: '140px' }}>Price (৳) *</th>
-                    <th style={{ width: '50px', textAlign: 'center' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {variantRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                        No variant rows selected. Click a size chip above or click <strong>"+ Add Another Row"</strong>.
-                      </td>
+              {/* Variants Separate Rows Table */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'visible', width: '100%', boxSizing: 'border-box' }}>
+                <table style={{ width: '100%', tableLayout: 'fixed', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
+                  <colgroup>
+                    <col style={{ width: '36px' }} />
+                    <col style={{ width: '95px' }} />
+                    <col style={{ width: '135px' }} />
+                    <col style={{ width: '185px' }} />
+                    <col style={{ width: '95px' }} />
+                    <col style={{ width: '105px' }} />
+                    <col style={{ width: '85px' }} />
+                    <col style={{ width: '38px' }} />
+                  </colgroup>
+                  <thead style={{ backgroundColor: '#f1f5f9' }}>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>#</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Size *</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Color *</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Barcode *</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Cost (৳)</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Price (৳) *</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Stock</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px' }}></th>
                     </tr>
-                  ) : (
-                    variantRows.map((row, idx) => (
-                      <tr key={row.tempId}>
-                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)' }}>
-                          {idx + 1}
-                        </td>
-                        <td>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            value={row.size} 
-                            onChange={e => handleUpdateRow(row.tempId, 'size', e.target.value)}
-                            placeholder="Size (e.g. M)" 
-                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px', fontWeight: 600 }}
-                          />
-                        </td>
-                        <td>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            value={row.color} 
-                            onChange={e => handleUpdateRow(row.tempId, 'color', e.target.value)}
-                            placeholder="Color" 
-                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px' }}
-                          />
-                        </td>
-                        <td>
-                          {(() => {
-                            const trimmedBc = row.barcode.trim();
-                            const isMissing = !trimmedBc;
-                            const isDupBatch = Boolean(trimmedBc && variantRows.filter(r => r.barcode.trim() === trimmedBc).length > 1);
-                            const isDupDb = Boolean(trimmedBc && variants.some(v => v.barcode && (v.barcode.trim() === trimmedBc || v.barcode.replace(/-/g, '') === trimmedBc.replace(/-/g, ''))));
-                            const hasError = isMissing || isDupBatch || isDupDb;
-                            let errorTooltip = '';
-                            if (isMissing) errorTooltip = 'Barcode is required';
-                            else if (isDupBatch) errorTooltip = 'Duplicate barcode in current batch';
-                            else if (isDupDb) errorTooltip = 'Barcode already exists in database';
-
-                            return (
-                              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                                <input 
-                                  type="text" 
-                                  className="form-control" 
-                                  value={row.barcode} 
-                                  onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
-                                  placeholder="e.g. 10016202-1" 
-                                  title={errorTooltip || 'Unique Barcode'}
-                                  style={{ 
-                                    height: '36px', 
-                                    fontSize: '13px', 
-                                    fontFamily: 'monospace', 
-                                    padding: '4px 8px', 
-                                    fontWeight: 600,
-                                    borderColor: hasError ? 'var(--color-danger)' : undefined,
-                                    backgroundColor: hasError ? 'rgba(244, 63, 94, 0.05)' : undefined
-                                  }}
-                                />
-                                {hasError && (
-                                  <span style={{ fontSize: '10px', color: 'var(--color-danger)', marginTop: '2px', fontWeight: 600 }}>
-                                    {errorTooltip}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td>
-                          <input 
-                            type="number" 
-                            step="0.01" 
-                            className="form-control" 
-                            value={row.purchase_price || ''} 
-                            onChange={e => handleUpdateRow(row.tempId, 'purchase_price', Number(e.target.value))}
-                            placeholder="0.00" 
-                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px' }}
-                          />
-                        </td>
-                        <td>
-                          <input 
-                            type="number" 
-                            step="0.01" 
-                            className="form-control" 
-                            value={row.selling_price || ''} 
-                            onChange={e => handleUpdateRow(row.tempId, 'selling_price', Number(e.target.value))}
-                            placeholder="Price *" 
-                            style={{ height: '36px', fontSize: '13px', padding: '4px 8px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined }}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            className="btn-icon text-danger"
-                            onClick={() => handleRemoveRow(row.tempId)}
-                            title="Remove this row"
-                            style={{ padding: '6px', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                  </thead>
+                  <tbody>
+                    {variantRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                          No variants added yet. Click size buttons above or click <strong>"+"</strong> button.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      variantRows.map((row, idx) => (
+                        <tr key={row.tempId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)', padding: '5px 4px' }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ position: 'relative', overflow: 'visible', padding: '5px 8px' }}>
+                            <SizeCombobox
+                              value={row.size}
+                              onChange={val => handleUpdateRow(row.tempId, 'size', val)}
+                              placeholder="Size"
+                            />
+                          </td>
+                          <td style={{ position: 'relative', overflow: 'visible', padding: '5px 8px' }}>
+                            <ColorCombobox
+                              value={row.color}
+                              onChange={val => handleUpdateRow(row.tempId, 'color', val)}
+                              placeholder="Color"
+                            />
+                          </td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <input 
+                              type="text" 
+                              className="form-control" 
+                              value={row.barcode} 
+                              onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
+                              placeholder="Barcode" 
+                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '11.5px', fontFamily: 'monospace', fontWeight: 600, backgroundColor: '#f8fafc', padding: '2px 8px' }}
+                              required
+                            />
+                          </td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <input 
+                              type="number" 
+                              step="0.01" 
+                              className="form-control" 
+                              value={row.purchase_price || ''} 
+                              onChange={e => handleUpdateRow(row.tempId, 'purchase_price', Number(e.target.value))}
+                              placeholder="0.00" 
+                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', padding: '2px 8px' }}
+                            />
+                          </td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <input 
+                              type="number" 
+                              step="0.01" 
+                              className="form-control" 
+                              value={row.selling_price || ''} 
+                              onChange={e => handleUpdateRow(row.tempId, 'selling_price', Number(e.target.value))}
+                              placeholder="Price *" 
+                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined, padding: '2px 8px' }}
+                              required
+                            />
+                          </td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              className="form-control" 
+                              value={row.stock_quantity ?? ''} 
+                              onChange={e => handleUpdateRow(row.tempId, 'stock_quantity', Number(e.target.value))}
+                              placeholder="0" 
+                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 700, padding: '2px 8px' }}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center', padding: '5px 4px' }}>
+                            <button
+                              type="button"
+                              className="btn-icon text-danger"
+                              onClick={() => handleRemoveRow(row.tempId)}
+                              title="Remove row"
+                              style={{ padding: '4px', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add row button (Right-aligned prominent big plus icon button) */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={handleAddEmptyRow}
+                  title="Add row"
+                  aria-label="Add row"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--color-primary)',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.22)';
+                    e.currentTarget.style.filter = 'brightness(1.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.15)';
+                    e.currentTarget.style.filter = 'none';
+                  }}
+                >
+                  <Plus size={20} strokeWidth={2.8} />
+                </button>
+              </div>
+
             </div>
 
             {/* Action Buttons Footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
               <button 
                 type="button" 
                 className="btn btn-secondary" 
-                onClick={handleAddCustomRow}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '38px', padding: '0 14px', fontWeight: 600 }}
+                onClick={() => setShowVariantModal(false)}
+                style={{ padding: '5px 14px', fontSize: '12px' }}
               >
-                <Plus size={15} /> Add Another Row
+                Cancel
               </button>
-
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowVariantModal(false)} style={{ height: '38px', padding: '0 16px' }}>
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary" 
-                  onClick={handleCreateBatchVariants} 
-                  disabled={savingVariant || variantRows.length === 0}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, height: '38px', padding: '0 20px' }}
-                >
-                  {savingVariant ? 'Saving...' : `Create ${variantRows.length} ${variantRows.length === 1 ? 'Variant' : 'Variants'}`}
-                </button>
-              </div>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={handleCreateBatchVariants} 
+                disabled={savingVariant || variantRows.length === 0}
+                style={{ 
+                  padding: '5px 18px', 
+                  fontSize: '12px', 
+                  fontWeight: 700, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '5px' 
+                }}
+              >
+                <Check size={14} />
+                {savingVariant 
+                  ? 'Saving...' 
+                  : `Save ${variantRows.length} ${variantRows.length === 1 ? 'Variant' : 'Variants'}`}
+              </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* QUICK EDIT VARIANT & STOCK MODAL */}
+      {editVariantModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto', padding: '24px', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Boxes size={20} style={{ color: 'var(--color-primary)' }} /> Edit Variant & Stock
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setEditVariantModal(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditVariant} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>SKU Code</label>
+                  <input type="text" className="form-control" value={editSku} onChange={e => setEditSku(e.target.value)} required style={{ height: '38px', fontSize: '13px' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>Barcode *</label>
+                  <input type="text" className="form-control" value={editBarcode} onChange={e => setEditBarcode(e.target.value)} required style={{ height: '38px', fontSize: '13px', fontFamily: 'monospace', fontWeight: 600 }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>Size</label>
+                  <SizeCombobox value={editSize} onChange={setEditSize} placeholder="Select / Type size" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>Color</label>
+                  <ColorCombobox value={editColor} onChange={setEditColor} placeholder="Select / Type" />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>Purchase / Cost Price (৳)</label>
+                  <input type="number" step="0.01" className="form-control" value={editCostPrice} onChange={e => setEditCostPrice(Number(e.target.value))} style={{ height: '38px', fontSize: '13px' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>Selling Price (৳) *</label>
+                  <input type="number" step="0.01" className="form-control" value={editSellPrice} onChange={e => setEditSellPrice(Number(e.target.value))} required style={{ height: '38px', fontSize: '13px', fontWeight: 700 }} />
+                </div>
+              </div>
+
+              {/* Stock Quantity Highlight Box */}
+              <div style={{ backgroundColor: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 700, color: '#166534' }}>
+                    📦 Current Stock Quantity (Units)
+                  </label>
+                  <span style={{ fontSize: '11px', color: '#15803d', fontWeight: 600 }}>
+                    Change manually anytime
+                  </span>
+                </div>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={editStockQty} 
+                  onChange={e => setEditStockQty(Number(e.target.value))} 
+                  required 
+                  min="0"
+                  style={{ height: '40px', fontSize: '15px', fontWeight: 800, color: '#166534', backgroundColor: '#ffffff', borderColor: '#4ade80' }} 
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+                    Low Stock Alert Threshold
+                  </label>
+                  <input 
+                    type="number" 
+                    className="form-control" 
+                    value={editMinStock} 
+                    onChange={e => setEditMinStock(Number(e.target.value))} 
+                    style={{ width: '80px', height: '32px', fontSize: '12px', textAlign: 'center' }} 
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditVariantModal(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingEditVariant} style={{ fontWeight: 700, padding: '8px 20px' }}>
+                  {savingEditVariant ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -930,6 +1702,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           variant={barcodeVariantModal} 
           productName={activeProduct.name} 
           onClose={() => setBarcodeVariantModal(null)} 
+        />
+      )}
+
+      {/* REUSABLE CLEAN STOCK ADJUSTMENT MODAL */}
+      {adjustingStockVariant && (
+        <StockAdjustmentModal
+          variant={adjustingStockVariant}
+          variantsList={activeVariants}
+          onClose={() => setAdjustingStockVariant(null)}
+          onSuccess={async () => {
+            await loadData();
+            onRefreshStats();
+          }}
         />
       )}
 

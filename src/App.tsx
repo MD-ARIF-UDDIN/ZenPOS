@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { POSView } from './components/POSView';
 import { ProductsView } from './components/ProductsView';
-import { PurchasesView } from './components/PurchasesView';
 import { StockView } from './components/StockView';
 import { ReportsView } from './components/ReportsView';
 import { UsersView } from './components/UsersView';
@@ -17,10 +17,10 @@ import { RefreshCw, LogOut, User, Menu } from 'lucide-react';
 function App() {
   const { toasts, removeToast, modal, closeModal } = useNotificationStore();
   const [session, setSession] = useState<any>(null);
-  const [currentTab, setTab] = useState('pos');
   const [lowStockCount, setLowStockCount] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
 
   const handleAuthSuccess = (activeSession: any) => {
     setSession(activeSession);
@@ -94,41 +94,15 @@ function App() {
     return <AuthView onAuthSuccess={handleAuthSuccess} />;
   }
 
-  const renderActiveView = () => {
-    switch (currentTab) {
-      case 'pos':
-        return <POSView onRefreshStats={refreshStats} />;
-      case 'products':
-        return <ProductsView onRefreshStats={refreshStats} />;
-      case 'purchases':
-        return <PurchasesView onRefreshStats={refreshStats} />;
-      case 'stock':
-        return <StockView onRefreshStats={refreshStats} />;
-      case 'sales':
-        return <SalesListView />;
-      case 'expenses':
-        return <ExpensesView onRefreshStats={refreshStats} />;
-      case 'users':
-        return <UsersView />;
-      case 'reports':
-        return <ReportsView />;
-      default:
-        return <POSView onRefreshStats={refreshStats} />;
-    }
-  };
-
   const getPageTitle = () => {
-    switch (currentTab) {
-      case 'pos': return 'POS Checkout';
-      case 'products': return 'Product Catalog';
-      case 'purchases': return 'Supplier Restock Orders';
-      case 'stock': return 'Inventory Stock Levels';
-      case 'sales': return 'Completed Invoices Ledger';
-      case 'expenses': return 'Operating Expense Ledger';
-      case 'users': return 'Staff & Terminal Profiles';
-      case 'reports': return 'Business Analytics';
-      default: return 'Fabric Clothing POS';
-    }
+    const path = location.pathname.toLowerCase();
+    if (path.startsWith('/products')) return 'Product Catalog';
+    if (path.startsWith('/stock')) return 'Inventory Stock Levels';
+    if (path.startsWith('/sales')) return 'Completed Invoices Ledger';
+    if (path.startsWith('/expenses')) return 'Operating Expense Ledger';
+    if (path.startsWith('/users')) return 'Staff & Terminal Profiles';
+    if (path.startsWith('/reports')) return 'Business Analytics';
+    return 'POS Checkout';
   };
 
   const userEmail = session?.user?.email || 'Cashier';
@@ -137,8 +111,6 @@ function App() {
     <div className="app-container">
       {/* Sidebar navigation */}
       <Sidebar 
-        currentTab={currentTab} 
-        setTab={setTab} 
         lowStockCount={lowStockCount} 
         isOpen={isMobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
@@ -261,7 +233,17 @@ function App() {
         </header>
 
         <main className="page-container">
-          {renderActiveView()}
+          <Routes>
+            <Route path="/" element={<Navigate to="/pos" replace />} />
+            <Route path="/pos" element={<POSView onRefreshStats={refreshStats} />} />
+            <Route path="/products" element={<ProductsView onRefreshStats={refreshStats} />} />
+            <Route path="/stock" element={<StockView onRefreshStats={refreshStats} />} />
+            <Route path="/sales" element={<SalesListView />} />
+            <Route path="/expenses" element={<ExpensesView onRefreshStats={refreshStats} />} />
+            <Route path="/users" element={<UsersView />} />
+            <Route path="/reports" element={<ReportsView />} />
+            <Route path="*" element={<Navigate to="/pos" replace />} />
+          </Routes>
         </main>
       </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Truck } from 'lucide-react';
+import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Boxes } from 'lucide-react';
 import { Pagination } from './Pagination';
 
 type DateFilter = 'today' | 'week' | 'month' | 'all';
@@ -11,7 +11,6 @@ export const ReportsView: React.FC = () => {
   const [saleItems, setSaleItems] = useState<any[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Date filter & pagination state
@@ -22,19 +21,17 @@ export const ReportsView: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [salesList, itemsList, variantList, expenseList, purchaseList] = await Promise.all([
+      const [salesList, itemsList, variantList, expenseList] = await Promise.all([
         dbService.getSales(),
         dbService.getSaleItemsDetailed(),
         dbService.getVariants(),
-        dbService.getExpenses(),
-        dbService.getPurchases()
+        dbService.getExpenses()
       ]);
       
       setSales(salesList);
       setSaleItems(itemsList);
       setVariants(variantList);
       setExpenses(expenseList);
-      setPurchases(purchaseList);
     } catch (e) {
       console.error(e);
     } finally {
@@ -73,7 +70,6 @@ export const ReportsView: React.FC = () => {
 
   // Filtered expenses
   const filteredExpenses = expenses.filter(exp => filterByDate(exp.expense_date));
-  const filteredPurchases = purchases.filter(p => filterByDate(p.purchase_date));
 
   // Compute stats
   const totalRevenue = filteredSales.reduce((acc, s) => acc + Number(s.payable_amount), 0);
@@ -87,7 +83,8 @@ export const ReportsView: React.FC = () => {
   });
 
   const totalExpenses = filteredExpenses.reduce((acc, exp) => acc + Number(exp.amount), 0);
-  const totalPurchases = filteredPurchases.reduce((acc, p) => acc + Number(p.total_amount), 0);
+  const totalStockUnits = variants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0);
+  const totalStockValuation = variants.reduce((acc, v) => acc + ((v.stock_quantity || 0) * (v.purchase_price || 0)), 0);
   const overallNetProfit = totalProfit - totalExpenses;
 
   // Compute Top Selling Products & Product-wise Breakdown
@@ -208,13 +205,16 @@ export const ReportsView: React.FC = () => {
         <div className="card" style={{ padding: '12px 14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div className="card-title">Total Purchases</div>
+              <div className="card-title">Stock Valuation</div>
               <div className="card-value" style={{ color: 'var(--text-primary)' }}>
-                ৳{totalPurchases.toFixed(2)}
+                ৳{totalStockValuation.toFixed(2)}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {totalStockUnits} units in stock
               </div>
             </div>
             <span style={{ background: 'rgba(11, 37, 69, 0.08)', color: 'var(--color-primary)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
-              <Truck size={18} />
+              <Boxes size={18} />
             </span>
           </div>
         </div>
