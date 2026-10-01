@@ -10,7 +10,7 @@ interface ProductsViewProps {
   onRefreshStats: () => void;
 }
 
-export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): string => {
+export const generateNextBarcodes = (variantsList: { barcode?: string }[] = [], count: number = 1, extraExisting: string[] = []): string[] => {
   const now = new Date();
   const year = now.getFullYear().toString();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -19,18 +19,40 @@ export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): 
   const reverseDate = todayStr.split('').reverse().join(''); // e.g. "10016202"
 
   let maxSerial = 0;
-  variantsList.forEach(v => {
-    if (v.barcode && v.barcode.startsWith(reverseDate)) {
-      const serialPart = v.barcode.slice(reverseDate.length).replace(/^-/, '');
+  const checkBarcode = (bc?: string) => {
+    if (bc && bc.startsWith(reverseDate)) {
+      const serialPart = bc.slice(reverseDate.length).replace(/^-/, '');
       const parsed = parseInt(serialPart, 10);
       if (!isNaN(parsed) && parsed > maxSerial) {
         maxSerial = parsed;
       }
     }
-  });
+  };
 
-  return `${reverseDate}-${maxSerial + 1}`;
+  variantsList.forEach(v => checkBarcode(v.barcode));
+  extraExisting.forEach(bc => checkBarcode(bc));
+
+  const result: string[] = [];
+  for (let i = 1; i <= count; i++) {
+    result.push(`${reverseDate}${maxSerial + i}`);
+  }
+  return result;
 };
+
+export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): string => {
+  return generateNextBarcodes(variantsList, 1)[0];
+};
+
+interface VariantRowDraft {
+  tempId: string;
+  size: string;
+  color: string;
+  barcode: string;
+  sku: string;
+  purchase_price: number;
+  selling_price: number;
+  min_stock_level: number;
+}
 
 export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) => {
   const { showToast, showConfirm } = useNotificationStore();
@@ -55,14 +77,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [savingProduct, setSavingProduct] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
+  // Multi-variant creation states
   const [showVariantModal, setShowVariantModal] = useState(false);
-  const [varSku, setVarSku] = useState('');
-  const [varBarcode, setVarBarcode] = useState('');
-  const [varSize, setVarSize] = useState('');
-  const [varColor, setVarColor] = useState('');
-  const [varPurchasePrice, setVarPurchasePrice] = useState(0);
-  const [varSellingPrice, setVarSellingPrice] = useState(0);
-  const [varMinStock, setVarMinStock] = useState(5);
+  const [variantRows, setVariantRows] = useState<VariantRowDraft[]>([]);
+  const [commonColor, setCommonColor] = useState('Default');
+  const [commonSellingPrice, setCommonSellingPrice] = useState<number>(0);
+  const [commonPurchasePrice, setCommonPurchasePrice] = useState<number>(0);
   const [savingVariant, setSavingVariant] = useState(false);
   const [deletingVariantId, setDeletingVariantId] = useState<string | null>(null);
 
@@ -112,51 +132,173 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   const handleOpenAddVariant = () => {
-    setVarBarcode(generateNextBarcode(variants));
+    const nextBc = generateNextBarcode(variants);
+    setCommonColor('Default');
+    setCommonSellingPrice(0);
+    setCommonPurchasePrice(0);
+    setVariantRows([
+      {
+        tempId: Math.random().toString(36).substring(2, 9),
+        size: 'M',
+        color: 'Default',
+        barcode: nextBc,
+        sku: '',
+        purchase_price: 0,
+        selling_price: 0,
+        min_stock_level: 5
+      }
+    ]);
     setShowVariantModal(true);
   };
 
-  const handleCreateVariant = async (e: React.FormEvent) => {
+  const toggleSizeInBatch = (sizeName: string) => {
+    setVariantRows(prev => {
+      const exists = prev.find(r => r.size === sizeName);
+      if (exists) {
+        if (prev.length === 1) {
+          // If only 1, don't remove, just change size or notify
+          return prev.filter(r => r.tempId !== exists.tempId);
+        }
+        return prev.filter(r => r.tempId !== exists.tempId);
+      } else {
+        const existingBarcodes = prev.map(r => r.barcode);
+        const [nextBc] = generateNextBarcodes(variants, 1, existingBarcodes);
+        return [
+          ...prev,
+          {
+            tempId: Math.random().toString(36).substring(2, 9),
+            size: sizeName,
+            color: commonColor || 'Default',
+            barcode: nextBc,
+            sku: '',
+            purchase_price: commonPurchasePrice || 0,
+            selling_price: commonSellingPrice || 0,
+            min_stock_level: 5
+          }
+        ];
+      }
+    });
+  };
+
+  const handleAddCustomRow = () => {
+    const existingBarcodes = variantRows.map(r => r.barcode);
+    const [nextBc] = generateNextBarcodes(variants, 1, existingBarcodes);
+    setVariantRows(prev => [
+      ...prev,
+      {
+        tempId: Math.random().toString(36).substring(2, 9),
+        size: 'Free Size',
+        color: commonColor || 'Default',
+        barcode: nextBc,
+        sku: '',
+        purchase_price: commonPurchasePrice || 0,
+        selling_price: commonSellingPrice || 0,
+        min_stock_level: 5
+      }
+    ]);
+  };
+
+  const handleRemoveRow = (tempId: string) => {
+    setVariantRows(prev => prev.filter(r => r.tempId !== tempId));
+  };
+
+  const handleUpdateRow = (tempId: string, field: keyof VariantRowDraft, value: any) => {
+    setVariantRows(prev => prev.map(r => {
+      if (r.tempId === tempId) {
+        return { ...r, [field]: value };
+      }
+      return r;
+    }));
+  };
+
+  const handleApplyCommonColor = (color: string) => {
+    setCommonColor(color);
+    setVariantRows(prev => prev.map(r => ({ ...r, color })));
+  };
+
+  const handleApplyCommonPrice = (sellPrice: number, costPrice: number) => {
+    setCommonSellingPrice(sellPrice);
+    setCommonPurchasePrice(costPrice);
+    setVariantRows(prev => prev.map(r => ({
+      ...r,
+      selling_price: sellPrice > 0 ? sellPrice : r.selling_price,
+      purchase_price: costPrice > 0 ? costPrice : r.purchase_price
+    })));
+  };
+
+  const handleCreateBatchVariants = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeProduct) return;
-    if (!varBarcode.trim()) return;
+    if (variantRows.length === 0) {
+      showToast('Please add at least one variant row.', 'warning');
+      return;
+    }
+
+    // Validate rows
+    for (let i = 0; i < variantRows.length; i++) {
+      const row = variantRows[i];
+      if (!row.size.trim()) {
+        showToast(`Row #${i + 1} is missing a Size.`, 'warning');
+        return;
+      }
+      if (!row.color.trim()) {
+        showToast(`Row #${i + 1} is missing a Color.`, 'warning');
+        return;
+      }
+      if (!row.barcode.trim()) {
+        showToast(`Row #${i + 1} is missing a Barcode.`, 'warning');
+        return;
+      }
+      if (row.selling_price <= 0) {
+        showToast(`Row #${i + 1} (${row.size}) must have a valid Selling Price.`, 'warning');
+        return;
+      }
+    }
+
+    // Check duplicate barcodes among rows
+    const barcodesInRows = variantRows.map(r => r.barcode.trim());
+    const uniqueBarcodes = new Set(barcodesInRows);
+    if (uniqueBarcodes.size !== barcodesInRows.length) {
+      showToast('Duplicate barcodes detected among the rows. Each row must have a unique barcode.', 'warning');
+      return;
+    }
+
+    // Check duplicate barcodes against existing DB variants
+    for (const row of variantRows) {
+      const rawBc = row.barcode.trim().replace(/-/g, '');
+      const exists = variants.find(v => v.barcode && (v.barcode === row.barcode.trim() || v.barcode.replace(/-/g, '') === rawBc));
+      if (exists) {
+        showToast(`Barcode "${row.barcode}" already exists in inventory! Please regenerate.`, 'warning');
+        return;
+      }
+    }
 
     try {
       setSavingVariant(true);
-      // Check if barcode already exists
-      const formattedBc = varBarcode.trim().replace(/^(\d{8})(\d+)$/, '$1-$2');
-      const rawBc = varBarcode.trim().replace(/-/g, '');
-      const exists = variants.find(v => v.barcode && (v.barcode === varBarcode.trim() || v.barcode === formattedBc || v.barcode.replace(/-/g, '') === rawBc));
-      if (exists) {
-        showToast('Barcode already exists! Barcode must be unique.', 'warning');
-        return;
+      showToast(`Creating ${variantRows.length} variant(s)...`, 'info');
+
+      for (const row of variantRows) {
+        const generatedSku = row.sku || `${activeProduct.name.substring(0,3).toUpperCase()}-${row.color.substring(0,3).toUpperCase()}-${row.size}`;
+        await dbService.saveVariant({
+          product_id: activeProduct.id,
+          sku: generatedSku,
+          barcode: row.barcode.trim(),
+          size: row.size.trim(),
+          color: row.color.trim(),
+          purchase_price: row.purchase_price || 0,
+          selling_price: row.selling_price,
+          stock_quantity: 0,
+          min_stock_level: row.min_stock_level || 5
+        });
       }
 
-      showToast('Creating variant...', 'info');
-      await dbService.saveVariant({
-        product_id: activeProduct.id,
-        sku: varSku || `${activeProduct.name.substring(0,3).toUpperCase()}-${varColor.substring(0,3).toUpperCase()}-${varSize}`,
-        barcode: varBarcode,
-        size: varSize,
-        color: varColor,
-        purchase_price: varPurchasePrice,
-        selling_price: varSellingPrice,
-        stock_quantity: 0,
-        min_stock_level: varMinStock
-      });
       setShowVariantModal(false);
-      // Reset fields
-      setVarSku('');
-      setVarBarcode('');
-      setVarSize('');
-      setVarColor('');
-      setVarPurchasePrice(0);
-      setVarSellingPrice(0);
+      setVariantRows([]);
       await loadData();
       onRefreshStats();
-      showToast('Variant added successfully!', 'success');
+      showToast(`Successfully created ${variantRows.length} variant(s)!`, 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Error creating variant', 'error');
+      showToast(err?.message || 'Error creating variants', 'error');
     } finally {
       setSavingVariant(false);
     }
@@ -379,8 +521,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           </td>
                           <td>{v.size}</td>
                           <td>{v.color}</td>
-                          <td>৳{v.purchase_price.toFixed(2)}</td>
-                          <td>৳{v.selling_price.toFixed(2)}</td>
+                          <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
+                          <td>৳{(v.selling_price ?? 0).toFixed(2)}</td>
                           <td style={{ fontWeight: 600, color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)' }}>
                             {v.stock_quantity}
                           </td>
@@ -450,8 +592,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
-                        <div>Cost: <span style={{ fontWeight: 700 }}>৳{v.purchase_price.toFixed(2)}</span></div>
-                        <div>Price: <span style={{ fontWeight: 700 }}>৳{v.selling_price.toFixed(2)}</span></div>
+                        <div>Cost: <span style={{ fontWeight: 700 }}>৳{(v.purchase_price ?? 0).toFixed(2)}</span></div>
+                        <div>Price: <span style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</span></div>
                         <span style={{
                           fontWeight: 700,
                           padding: '2px 6px',
@@ -519,157 +661,250 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         </div>
       )}
 
-      {/* CREATE VARIANT MODAL */}
+      {/* CREATE MULTI-VARIANT BATCH MODAL */}
       {showVariantModal && activeProduct && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '440px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
-            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Add Variant for {activeProduct.name}</h3>
-            <form onSubmit={handleCreateVariant} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* Size Selector */}
-              <div className="form-group">
-                <label className="form-label">Size *</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={varSize}
-                  onChange={e => setVarSize(e.target.value)}
-                  required
-                  placeholder="Select below or type custom size"
-                  style={{ marginBottom: '6px' }}
-                />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '28', '30', '32', '34', '36', '38', '40', '42'].map(s => (
-                    <span
-                      key={s}
-                      onClick={() => setVarSize(s)}
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        border: varSize === s ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
-                        background: varSize === s ? 'var(--color-primary-light)' : 'var(--bg-primary)',
-                        color: varSize === s ? 'var(--color-primary)' : 'var(--text-secondary)',
-                        transition: 'all 0.12s'
-                      }}
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '14px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '860px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: '20px', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Add Variants — <span style={{ color: 'var(--color-primary)' }}>{activeProduct.name}</span>
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Select multiple sizes or colors to generate all variant rows at once with sequential barcodes.
+                </p>
               </div>
+              <button 
+                type="button" 
+                onClick={() => setShowVariantModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+              >
+                ✕
+              </button>
+            </div>
 
-              {/* Color Selector */}
-              <div className="form-group">
-                <label className="form-label">Color *</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={varColor}
-                  onChange={e => setVarColor(e.target.value)}
-                  required
-                  placeholder="Select below or type custom color"
-                  style={{ marginBottom: '6px' }}
-                />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {[
-                    { label: 'White', hex: '#f8fafc' },
-                    { label: 'Black', hex: '#111' },
-                    { label: 'Navy Blue', hex: '#0b2545' },
-                    { label: 'Royal Blue', hex: '#2563eb' },
-                    { label: 'Sky Blue', hex: '#7dd3fc' },
-                    { label: 'Red', hex: '#ef4444' },
-                    { label: 'Maroon', hex: '#7f1d1d' },
-                    { label: 'Green', hex: '#16a34a' },
-                    { label: 'Olive', hex: '#84794e' },
-                    { label: 'Yellow', hex: '#facc15' },
-                    { label: 'Orange', hex: '#f97316' },
-                    { label: 'Brown', hex: '#78350f' },
-                    { label: 'Beige', hex: '#d4b896' },
-                    { label: 'Grey', hex: '#9ca3af' },
-                    { label: 'Antique Gold', hex: '#b8860b' },
-                  ].map(c => (
-                    <span
-                      key={c.label}
-                      onClick={() => setVarColor(c.label)}
-                      title={c.label}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        border: varColor === c.label ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
-                        background: varColor === c.label ? 'var(--color-primary-light)' : 'var(--bg-primary)',
-                        color: varColor === c.label ? 'var(--color-primary)' : 'var(--text-secondary)',
-                        transition: 'all 0.12s'
-                      }}
-                    >
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.hex, border: '1px solid #cbd5e1', flexShrink: 0 }} />
-                      {c.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
+            {/* Quick Generator Toolbar */}
+            <div style={{ backgroundColor: 'var(--bg-primary)', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                  <label className="form-label" style={{ margin: 0 }}>Barcode (Scan to Autofill) *</label>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary btn-sm" 
-                    style={{ padding: '0 6px', fontSize: '10.5px', height: '24px', display: 'flex', alignItems: 'center', gap: '3px' }}
-                    onClick={() => {
-                      const nextBc = generateNextBarcode(variants);
-                      setVarBarcode(nextBc);
-                      showToast(`Generated barcode: ${nextBc}`, 'info');
-                    }}
-                  >
-                    <Sparkles size={11} color="var(--color-primary)" /> Auto-Generate
-                  </button>
-                </div>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={varBarcode} 
-                  onChange={e => setVarBarcode(e.target.value)} 
-                  required 
-                  placeholder="Scan tag or click Auto-Generate" 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">SKU (Optional)</label>
-                <input type="text" className="form-control" value={varSku} onChange={e => setVarSku(e.target.value)} placeholder="Auto-generated if empty" />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div className="form-group">
-                  <label className="form-label">Purchase Price (৳)</label>
-                  <input type="number" step="0.01" className="form-control" value={varPurchasePrice || ''} onChange={e => setVarPurchasePrice(Number(e.target.value))} required placeholder="Cost Price" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Selling Price (৳)</label>
-                  <input type="number" step="0.01" className="form-control" value={varSellingPrice || ''} onChange={e => setVarSellingPrice(Number(e.target.value))} required placeholder="Retail Price" />
+              {/* Quick Multi-Size Selector */}
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '5px' }}>
+                  ⚡ Quick Multi-Size Selector (Click to toggle variant rows):
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '38', '40', '42', '44', 'Free Size'].map(s => {
+                    const isSelected = variantRows.some(r => r.size === s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => toggleSizeInBatch(s)}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                          background: isSelected ? 'var(--color-primary)' : '#ffffff',
+                          color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                          transition: 'all 0.12s'
+                        }}
+                      >
+                        {isSelected ? `✓ ${s}` : `+ ${s}`}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Min Stock Alert Level</label>
-                <input type="number" className="form-control" value={varMinStock || ''} onChange={e => setVarMinStock(Number(e.target.value))} placeholder="5" />
-              </div>
+              {/* Common Batch Inputs (Color, Retail Price, Cost Price) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '10px', alignItems: 'flex-end', paddingTop: '4px', borderTop: '1px dashed #cbd5e1' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                    Default Color (Applies to rows)
+                  </label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={commonColor} 
+                    onChange={e => handleApplyCommonColor(e.target.value)}
+                    placeholder="e.g. Navy Blue, White, Black"
+                    style={{ height: '32px', fontSize: '12px' }}
+                  />
+                </div>
 
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowVariantModal(false)}>Cancel</button>
-                 <button type="submit" className="btn btn-primary" disabled={savingVariant}>
-                   {savingVariant ? 'Creating...' : 'Create Variant'}
-                 </button>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                    Selling Price (৳) *
+                  </label>
+                  <input 
+                    type="number" 
+                    className="form-control" 
+                    value={commonSellingPrice || ''} 
+                    onChange={e => handleApplyCommonPrice(Number(e.target.value), commonPurchasePrice)}
+                    placeholder="e.g. 1250"
+                    style={{ height: '32px', fontSize: '12px', fontWeight: 700 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                    Purchase / Cost (৳) (Optional)
+                  </label>
+                  <input 
+                    type="number" 
+                    className="form-control" 
+                    value={commonPurchasePrice || ''} 
+                    onChange={e => handleApplyCommonPrice(commonSellingPrice, Number(e.target.value))}
+                    placeholder="Cost (Optional)"
+                    style={{ height: '32px', fontSize: '12px' }}
+                  />
+                </div>
               </div>
-            </form>
+            </div>
+
+            {/* Table of Variant Rows */}
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: '12px' }}>
+              <table className="table" style={{ margin: 0, fontSize: '12px' }}>
+                <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f1f5f9', zIndex: 2 }}>
+                  <tr>
+                    <th style={{ width: '40px', textAlign: 'center' }}>#</th>
+                    <th style={{ width: '120px' }}>Size *</th>
+                    <th style={{ width: '140px' }}>Color *</th>
+                    <th>Barcode (Unique) *</th>
+                    <th style={{ width: '110px' }}>Cost (৳)</th>
+                    <th style={{ width: '120px' }}>Price (৳) *</th>
+                    <th style={{ width: '50px', textAlign: 'center' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variantRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                        No variant rows selected. Click a size chip above or click <strong>"+ Add Row"</strong>.
+                      </td>
+                    </tr>
+                  ) : (
+                    variantRows.map((row, idx) => (
+                      <tr key={row.tempId}>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)' }}>
+                          {idx + 1}
+                        </td>
+                        <td>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            value={row.size} 
+                            onChange={e => handleUpdateRow(row.tempId, 'size', e.target.value)}
+                            placeholder="Size (e.g. M)" 
+                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px', fontWeight: 600 }}
+                          />
+                        </td>
+                        <td>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            value={row.color} 
+                            onChange={e => handleUpdateRow(row.tempId, 'color', e.target.value)}
+                            placeholder="Color" 
+                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px' }}
+                          />
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <input 
+                              type="text" 
+                              className="form-control" 
+                              value={row.barcode} 
+                              onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
+                              placeholder="Barcode" 
+                              style={{ height: '30px', fontSize: '11.5px', fontFamily: 'monospace', padding: '2px 6px', fontWeight: 600 }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              title="Regenerate Barcode"
+                              style={{ padding: '0 6px', height: '30px', fontSize: '10px' }}
+                              onClick={() => {
+                                const existingBarcodes = variantRows.filter(r => r.tempId !== row.tempId).map(r => r.barcode);
+                                const [newBc] = generateNextBarcodes(variants, 1, existingBarcodes);
+                                handleUpdateRow(row.tempId, 'barcode', newBc);
+                              }}
+                            >
+                              <Sparkles size={11} />
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            className="form-control" 
+                            value={row.purchase_price || ''} 
+                            onChange={e => handleUpdateRow(row.tempId, 'purchase_price', Number(e.target.value))}
+                            placeholder="0.00" 
+                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px' }}
+                          />
+                        </td>
+                        <td>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            className="form-control" 
+                            value={row.selling_price || ''} 
+                            onChange={e => handleUpdateRow(row.tempId, 'selling_price', Number(e.target.value))}
+                            placeholder="Price *" 
+                            style={{ height: '30px', fontSize: '12px', padding: '2px 6px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined }}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn-icon text-danger"
+                            onClick={() => handleRemoveRow(row.tempId)}
+                            title="Remove this row"
+                            style={{ padding: '4px', cursor: 'pointer' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Action Buttons Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm" 
+                onClick={handleAddCustomRow}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Plus size={14} /> Add Another Row
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowVariantModal(false)}>
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={handleCreateBatchVariants} 
+                  disabled={savingVariant || variantRows.length === 0}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  {savingVariant ? 'Saving...' : `Create ${variantRows.length} ${variantRows.length === 1 ? 'Variant' : 'Variants'}`}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
