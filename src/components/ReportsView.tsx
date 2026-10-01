@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
 import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Truck } from 'lucide-react';
+import { Pagination } from './Pagination';
 
 type DateFilter = 'today' | 'week' | 'month' | 'all';
 
@@ -13,17 +14,21 @@ export const ReportsView: React.FC = () => {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Date filter state
+  // Date filter & pagination state
   const [filter, setFilter] = useState<DateFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const salesList = await dbService.getSales();
-      const itemsList = await dbService.getSaleItemsDetailed();
-      const variantList = await dbService.getVariants();
-      const expenseList = await dbService.getExpenses();
-      const purchaseList = await dbService.getPurchases();
+      const [salesList, itemsList, variantList, expenseList, purchaseList] = await Promise.all([
+        dbService.getSales(),
+        dbService.getSaleItemsDetailed(),
+        dbService.getVariants(),
+        dbService.getExpenses(),
+        dbService.getPurchases()
+      ]);
       
       setSales(salesList);
       setSaleItems(itemsList);
@@ -118,38 +123,37 @@ export const ReportsView: React.FC = () => {
   if (loading) return <div style={{ padding: '24px' }}>Loading business analytics...</div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
-      {/* Filters Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-        
-        {/* Time filters buttons */}
+      {/* Date Range Selector */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>Business Performance Reports</h3>
         <div style={{
           display: 'flex',
-          background: '#ffffff',
+          backgroundColor: '#ffffff',
           border: '1px solid var(--border-color)',
-          borderRadius: 'var(--radius-md)',
-          padding: '4px',
-          gap: '4px',
-          boxShadow: 'var(--shadow-sm)'
+          borderRadius: 'var(--radius-sm)',
+          padding: '3px',
+          gap: '3px',
+          boxShadow: 'var(--shadow-xs)'
         }}>
           {(['today', 'week', 'month', 'all'] as const).map(option => (
             <button
               key={option}
-              className="btn"
+              className="btn btn-sm"
               onClick={() => setFilter(option)}
               style={{
-                padding: '8px 16px',
-                fontSize: '12px',
-                borderRadius: '8px',
+                padding: '4px 10px',
+                fontSize: '11.5px',
+                borderRadius: '4px',
                 background: filter === option ? 'var(--color-primary)' : 'transparent',
                 color: filter === option ? '#ffffff' : 'var(--text-secondary)',
                 fontWeight: 700,
-                boxShadow: filter === option ? 'var(--shadow-sm)' : 'none',
-                height: '34px'
+                boxShadow: filter === option ? 'var(--shadow-xs)' : 'none',
+                height: '28px'
               }}
             >
-              <Calendar size={12} style={{ marginRight: '6px', verticalAlign: 'middle', display: 'inline' }} />
+              <Calendar size={11} style={{ marginRight: '4px', verticalAlign: 'middle', display: 'inline' }} />
               <span style={{ textTransform: 'capitalize' }}>
                 {option === 'all' ? 'All Time' : option === 'week' ? 'This Week' : option === 'month' ? 'This Month' : option}
               </span>
@@ -159,64 +163,64 @@ export const ReportsView: React.FC = () => {
       </div>
 
       {/* KPI Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
         
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title">Total Sales</div>
               <div className="card-value">৳{totalRevenue.toFixed(2)}</div>
             </div>
-            <span style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--color-primary)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
-              <DollarSign size={24} />
+            <span style={{ background: 'rgba(11, 37, 69, 0.08)', color: 'var(--color-primary)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+              <DollarSign size={18} />
             </span>
           </div>
         </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title">Product Profit</div>
               <div className="card-value" style={{ color: 'var(--color-info)' }}>
                 ৳{totalProfit.toFixed(2)}
               </div>
             </div>
-            <span style={{ background: 'rgba(6, 182, 212, 0.1)', color: 'var(--color-info)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
-              <Package size={24} />
+            <span style={{ background: 'rgba(2, 132, 199, 0.08)', color: 'var(--color-info)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+              <Package size={18} />
             </span>
           </div>
         </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title">Shop Expenses</div>
               <div className="card-value" style={{ color: 'var(--color-danger)' }}>
                 ৳{totalExpenses.toFixed(2)}
               </div>
             </div>
-            <span style={{ background: 'rgba(244, 63, 94, 0.1)', color: 'var(--color-danger)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
-              <Receipt size={24} />
+            <span style={{ background: 'rgba(225, 29, 72, 0.08)', color: 'var(--color-danger)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+              <Receipt size={18} />
             </span>
           </div>
         </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title">Total Purchases</div>
               <div className="card-value" style={{ color: 'var(--text-primary)' }}>
                 ৳{totalPurchases.toFixed(2)}
               </div>
             </div>
-            <span style={{ background: 'rgba(13, 148, 136, 0.1)', color: 'var(--color-primary)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
-              <Truck size={24} />
+            <span style={{ background: 'rgba(11, 37, 69, 0.08)', color: 'var(--color-primary)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+              <Truck size={18} />
             </span>
           </div>
         </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title">Net Profit</div>
               <div className="card-value" style={{ color: overallNetProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
@@ -224,24 +228,24 @@ export const ReportsView: React.FC = () => {
               </div>
             </div>
             <span style={{ 
-              background: overallNetProfit >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)', 
+              background: overallNetProfit >= 0 ? 'rgba(5, 150, 105, 0.08)' : 'rgba(225, 29, 72, 0.08)', 
               color: overallNetProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)', 
-              padding: '12px', 
-              borderRadius: 'var(--radius-md)' 
+              padding: '8px', 
+              borderRadius: 'var(--radius-sm)' 
             }}>
-              <DollarSign size={24} />
+              <DollarSign size={18} />
             </span>
           </div>
         </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title">Total Orders</div>
               <div className="card-value">{filteredSales.length}</div>
             </div>
-            <span style={{ background: 'rgba(148, 163, 184, 0.1)', color: 'var(--text-secondary)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
-              <ShoppingBag size={24} />
+            <span style={{ background: 'rgba(148, 163, 184, 0.08)', color: 'var(--text-secondary)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+              <ShoppingBag size={18} />
             </span>
           </div>
         </div>
@@ -249,36 +253,36 @@ export const ReportsView: React.FC = () => {
       </div>
 
       {/* Top Selling Products */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Top Selling Items</h3>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-primary)', padding: '4px 10px', borderRadius: '20px' }}>Top 5</span>
+          <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0 }}>Top Selling Items</h3>
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '12px' }}>Top 5</span>
         </div>
         {topSellingList.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px', fontSize: '13px' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px', fontSize: '12.5px' }}>
             No sales recorded for this date filter.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {topSellingList.map((item, idx) => {
               const maxQty = topSellingList[0].qty;
               const percentage = (item.qty / maxQty) * 100;
-              const rankColors = ['#f59e0b', '#94a3b8', '#cd7c2f', 'var(--text-muted)', 'var(--text-muted)'];
-              const rankBg = ['rgba(245,158,11,0.12)', 'rgba(148,163,184,0.12)', 'rgba(205,124,47,0.12)', 'rgba(148,163,184,0.08)', 'rgba(148,163,184,0.08)'];
+              const rankColors = ['#d97706', '#64748b', '#b45309', 'var(--text-muted)', 'var(--text-muted)'];
+              const rankBg = ['rgba(217,119,6,0.1)', 'rgba(100,116,139,0.1)', 'rgba(180,83,9,0.1)', 'rgba(148,163,184,0.06)', 'rgba(148,163,184,0.06)'];
               return (
                 <div key={idx} style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '14px',
-                  padding: '12px 14px',
+                  gap: '10px',
+                  padding: '8px 10px',
                   background: 'var(--bg-primary)',
                   borderRadius: 'var(--radius-sm)',
-                  border: idx === 0 ? '1px solid rgba(245,158,11,0.2)' : '1px solid transparent'
+                  border: idx === 0 ? '1px solid rgba(217,119,6,0.2)' : '1px solid transparent'
                 }}>
                   {/* Rank Badge */}
                   <div style={{
-                    width: '32px',
-                    height: '32px',
+                    width: '26px',
+                    height: '26px',
                     borderRadius: '50%',
                     background: rankBg[idx] || rankBg[4],
                     color: rankColors[idx] || rankColors[4],
@@ -286,7 +290,7 @@ export const ReportsView: React.FC = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 800,
-                    fontSize: '13px',
+                    fontSize: '11.5px',
                     flexShrink: 0
                   }}>
                     #{idx + 1}
@@ -294,26 +298,26 @@ export const ReportsView: React.FC = () => {
 
                   {/* Product Info + Bar */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                       <div style={{ overflow: 'hidden' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {item.name}
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
                           {item.size} · {item.color} · {item.sku}
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-primary)' }}>{item.qty} units</div>
-                        <div style={{ fontSize: '11px', color: 'var(--color-success)', fontWeight: 600 }}>৳{item.revenue.toFixed(0)}</div>
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '8px' }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--color-primary)' }}>{item.qty} units</div>
+                        <div style={{ fontSize: '10.5px', color: 'var(--color-success)', fontWeight: 600 }}>৳{item.revenue.toFixed(0)}</div>
                       </div>
                     </div>
-                    <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: '100%', height: '4px', background: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
                       <div style={{
                         width: `${percentage}%`,
                         height: '100%',
-                        background: idx === 0 ? 'linear-gradient(90deg, var(--color-primary), var(--color-success))' : 'var(--color-primary)',
-                        borderRadius: '3px',
+                        background: 'var(--color-primary)',
+                        borderRadius: '2px',
                         opacity: 1 - idx * 0.12
                       }}></div>
                     </div>
@@ -327,7 +331,7 @@ export const ReportsView: React.FC = () => {
 
       {/* Product-wise Sales Breakdown Table */}
       <div>
-        <h3 style={{ marginBottom: '16px', fontSize: '16px', fontWeight: 700 }}>Product-wise Sales Breakdown</h3>
+        <h3 style={{ marginBottom: '10px', fontSize: '14px', fontWeight: 800 }}>Product-wise Sales Breakdown</h3>
         <div className="table-container">
           <table className="table">
             <thead>
@@ -345,18 +349,22 @@ export const ReportsView: React.FC = () => {
             <tbody>
               {productStatsList.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
                     No products sold in this time range.
                   </td>
                 </tr>
               ) : (
-                productStatsList.map((item, idx) => (
+                productStatsList
+                  .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                  .map((item, idx) => (
                   <tr key={idx}>
-                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
-                    <td style={{ fontWeight: 600 }}>{item.name}</td>
-                    <td>{item.sku}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-secondary)' }}>{item.barcode}</td>
-                    <td>{item.size} / {item.color}</td>
+                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>
+                    <td style={{ fontWeight: 600, fontSize: '12.5px' }}>{item.name}</td>
+                    <td style={{ fontSize: '12px' }}>{item.sku}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>{item.barcode}</td>
+                    <td style={{ fontSize: '12px' }}>{item.size} / {item.color}</td>
                     <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.qty}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>৳{item.revenue.toFixed(2)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-success)' }}>৳{item.profit.toFixed(2)}</td>
@@ -365,6 +373,13 @@ export const ReportsView: React.FC = () => {
               )}
             </tbody>
           </table>
+          <Pagination 
+            currentPage={currentPage}
+            totalItems={productStatsList.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </div>
 

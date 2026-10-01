@@ -3,12 +3,15 @@ import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import { createClient } from '@supabase/supabase-js';
 import { Plus, Trash2 } from 'lucide-react';
+import { Pagination } from './Pagination';
 
 export const UsersView: React.FC = () => {
   const { showToast, showConfirm } = useNotificationStore();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Registration Form States (for admin to add cashiers)
   const [showAddModal, setShowAddModal] = useState(false);
@@ -117,16 +120,16 @@ export const UsersView: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-          <Plus size={18} /> Register New Staff
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
+          <Plus size={15} /> Register New Staff
         </button>
       </div>
 
       {loading ? (
-        <div>Loading staff details...</div>
+        <div style={{ padding: '16px', fontSize: '13px' }}>Loading staff details...</div>
       ) : (
         <div className="table-container">
           <table className="table">
@@ -137,38 +140,42 @@ export const UsersView: React.FC = () => {
                 <th>User ID</th>
                 <th>Staff Role</th>
                 <th>Created At</th>
-                <th style={{ width: '120px' }}>Actions</th>
+                <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
                     No staff profiles found. Register profiles using the button above.
                   </td>
                 </tr>
               ) : (
-                users.map((u, idx) => (
+                users
+                  .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                  .map((u, idx) => (
                   <tr key={u.id}>
-                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
-                    <td style={{ fontWeight: 600 }}>{u.full_name || 'N/A'}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-secondary)' }}>{u.id}</td>
+                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>
+                    <td style={{ fontWeight: 600, fontSize: '12.5px' }}>{u.full_name || 'N/A'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>{u.id}</td>
                     <td>
                       <select 
                         className="form-control" 
                         value={u.role || 'cashier'} 
                         onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                        style={{ padding: '4px 8px', fontSize: '13px', width: '130px', height: '34px' }}
+                        style={{ padding: '2px 6px', fontSize: '12px', width: '110px', height: '28px' }}
                       >
                         <option value="cashier">Cashier</option>
                         <option value="manager">Manager</option>
                         <option value="admin">Administrator</option>
                       </select>
                     </td>
-                    <td>{new Date(u.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <button className="btn btn-danger" style={{ padding: '6px 10px' }} onClick={() => handleDeleteUser(u.id)} disabled={deletingUserId === u.id}>
-                        {deletingUserId === u.id ? 'Removing...' : <><Trash2 size={14} /> Remove</>}
+                    <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button className="btn btn-danger btn-sm" style={{ padding: '0 8px', fontSize: '11px' }} onClick={() => handleDeleteUser(u.id)} disabled={deletingUserId === u.id}>
+                        {deletingUserId === u.id ? '...' : <><Trash2 size={12} style={{ marginRight: '2px' }} /> Remove</>}
                       </button>
                     </td>
                   </tr>
@@ -176,15 +183,22 @@ export const UsersView: React.FC = () => {
               )}
             </tbody>
           </table>
+          <Pagination 
+            currentPage={currentPage}
+            totalItems={users.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
 
       {/* REGISTER NEW STAFF MODAL */}
       {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 500 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '450px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Register New Staff Login</h3>
-            <form onSubmit={handleCreateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '18px' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Register New Staff Login</h3>
+            <form onSubmit={handleCreateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Full Name *</label>
                 <input 
@@ -231,7 +245,7 @@ export const UsersView: React.FC = () => {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={formLoading}>
                   {formLoading ? 'Creating...' : 'Save Profile'}

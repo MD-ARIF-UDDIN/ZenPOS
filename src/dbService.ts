@@ -1,15 +1,48 @@
 import { supabase } from './supabaseClient';
 import type { Product, ProductVariant } from './store';
 
+// High-speed In-Memory Cache with TTL
+interface CacheStore {
+  products?: { data: Product[]; timestamp: number };
+  variants?: { data: ProductVariant[]; timestamp: number };
+  suppliers?: { data: any[]; timestamp: number };
+  purchases?: { data: any[]; timestamp: number };
+  sales?: { data: any[]; timestamp: number };
+  expenses?: { data: any[]; timestamp: number };
+  users?: { data: any[]; timestamp: number };
+  stock_ledger?: { data: any[]; timestamp: number };
+  sale_items_detailed?: { data: any[]; timestamp: number };
+}
+
+const CACHE_TTL_MS = 60 * 1000; // 1 minute fresh cache
+const cache: CacheStore = {};
+
+export const clearPosCache = (keys?: (keyof CacheStore)[]) => {
+  if (!keys) {
+    Object.keys(cache).forEach((k) => delete cache[k as keyof CacheStore]);
+  } else {
+    keys.forEach((k) => delete cache[k]);
+  }
+};
+
 export const dbService = {
+  // Cache utility
+  clearCache: clearPosCache,
+
   // --- Products & Variants ---
-  async getProducts(): Promise<Product[]> {
+  async getProducts(forceRefresh = false): Promise<Product[]> {
+    const now = Date.now();
+    if (!forceRefresh && cache.products && (now - cache.products.timestamp < CACHE_TTL_MS)) {
+      return cache.products.data;
+    }
     const { data, error } = await supabase
       .from('products')
       .select('*')
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.products = { data: result, timestamp: now };
+    return result;
   },
 
   async saveProduct(product: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
@@ -19,6 +52,7 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
+    clearPosCache(['products', 'variants']);
     return data;
   },
 
@@ -28,14 +62,21 @@ export const dbService = {
       .delete()
       .eq('id', id);
     if (error) throw error;
+    clearPosCache(['products', 'variants']);
   },
 
-  async getVariants(): Promise<ProductVariant[]> {
+  async getVariants(forceRefresh = false): Promise<ProductVariant[]> {
+    const now = Date.now();
+    if (!forceRefresh && cache.variants && (now - cache.variants.timestamp < CACHE_TTL_MS)) {
+      return cache.variants.data;
+    }
     const { data, error } = await supabase
       .from('product_variants')
       .select('*, product:products(*)');
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.variants = { data: result, timestamp: now };
+    return result;
   },
 
   async saveVariant(variant: Omit<ProductVariant, 'id'> & { id?: string }): Promise<ProductVariant> {
@@ -45,6 +86,7 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
+    clearPosCache(['variants']);
     return data;
   },
 
@@ -54,16 +96,23 @@ export const dbService = {
       .delete()
       .eq('id', id);
     if (error) throw error;
+    clearPosCache(['variants']);
   },
 
   // --- Suppliers ---
-  async getSuppliers() {
+  async getSuppliers(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.suppliers && (now - cache.suppliers.timestamp < CACHE_TTL_MS)) {
+      return cache.suppliers.data;
+    }
     const { data, error } = await supabase
       .from('suppliers')
       .select('*')
       .order('name', { ascending: true });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.suppliers = { data: result, timestamp: now };
+    return result;
   },
 
   async saveSupplier(supplier: any) {
@@ -73,17 +122,24 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
+    clearPosCache(['suppliers', 'purchases']);
     return data;
   },
 
   // --- Purchases ---
-  async getPurchases() {
+  async getPurchases(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.purchases && (now - cache.purchases.timestamp < CACHE_TTL_MS)) {
+      return cache.purchases.data;
+    }
     const { data, error } = await supabase
       .from('purchases')
       .select('*, supplier:suppliers(*)')
       .order('purchase_date', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.purchases = { data: result, timestamp: now };
+    return result;
   },
 
   async addPurchase(supplierId: string, items: { variantId: string; quantity: number; unitCost: number }[], invoiceNumber: string, shippingCost: number = 0) {
@@ -116,16 +172,23 @@ export const dbService = {
       
       if (itemsError) throw itemsError;
     }
+    clearPosCache(['purchases', 'variants', 'stock_ledger']);
   },
 
   // --- Sales ---
-  async getSales() {
+  async getSales(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.sales && (now - cache.sales.timestamp < CACHE_TTL_MS)) {
+      return cache.sales.data;
+    }
     const { data, error } = await supabase
       .from('sales')
       .select('*')
       .order('sale_date', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.sales = { data: result, timestamp: now };
+    return result;
   },
 
   async getSaleItems(saleId: string) {
@@ -178,29 +241,35 @@ export const dbService = {
 
       if (itemsError) throw itemsError;
       
+      clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger']);
       return sale.id;
     }
     throw new Error('Failed to checkout sale');
   },
 
-  // --- Reports & Analytics ---
-  async getDashboardStats() {
+  // --- Ultra-Fast Low Stock Count for Badge (Does not pull all sales/items) ---
+  async getLowStockCount(): Promise<number> {
     const variants = await this.getVariants();
-    const sales = await this.getSales();
+    return variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+  },
+
+  // --- Reports & Analytics (Parallelized & Cached) ---
+  async getDashboardStats() {
+    const [variants, sales, { data: saleItems }] = await Promise.all([
+      this.getVariants(),
+      this.getSales(),
+      supabase.from('sale_items').select('quantity, unit_price, variant_id')
+    ]);
     
     // Total Revenue
-    const revenue = sales.reduce((acc: number, s: any) => acc + Number(s.payable_amount), 0);
+    const revenue = sales.reduce((acc: number, s: any) => acc + Number(s.payable_amount || 0), 0);
     
-    // Total profit (Difference between sale price and purchase cost)
-    // We query sale items to get cost details
-    const { data: saleItems, error } = await supabase
-      .from('sale_items')
-      .select('quantity, unit_price, variant_id');
-      
+    // Total profit
     let profit = 0;
-    if (!error && saleItems) {
+    if (saleItems) {
+      const variantMap = new Map(variants.map(v => [v.id, v]));
       saleItems.forEach((si: any) => {
-        const v = variants.find(x => x.id === si.variant_id);
+        const v = variantMap.get(si.variant_id);
         if (v) {
           profit += (si.quantity * (si.unit_price - v.purchase_price));
         }
@@ -208,7 +277,7 @@ export const dbService = {
     }
 
     // Low Stock Alert Count
-    const lowStockCount = variants.filter(v => v.stock_quantity <= v.min_stock_level).length;
+    const lowStockCount = variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
 
     return {
       totalRevenue: revenue,
@@ -220,13 +289,19 @@ export const dbService = {
   },
 
   // --- Users & Staff Management ---
-  async getUsers() {
+  async getUsers(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.users && (now - cache.users.timestamp < CACHE_TTL_MS)) {
+      return cache.users.data;
+    }
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.users = { data: result, timestamp: now };
+    return result;
   },
 
   async updateUserRole(id: string, role: string) {
@@ -237,6 +312,7 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
+    clearPosCache(['users']);
     return data;
   },
 
@@ -246,33 +322,52 @@ export const dbService = {
       .delete()
       .eq('id', id);
     if (error) throw error;
+    clearPosCache(['users']);
   },
 
-  async getSaleItemsDetailed() {
+  async getSaleItemsDetailed(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.sale_items_detailed && (now - cache.sale_items_detailed.timestamp < CACHE_TTL_MS)) {
+      return cache.sale_items_detailed.data;
+    }
     const { data, error } = await supabase
       .from('sale_items')
       .select('*, sale:sales(*)');
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.sale_items_detailed = { data: result, timestamp: now };
+    return result;
   },
 
-  async getStockLedger() {
+  async getStockLedger(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.stock_ledger && (now - cache.stock_ledger.timestamp < CACHE_TTL_MS)) {
+      return cache.stock_ledger.data;
+    }
     const { data, error } = await supabase
       .from('stock_ledger')
       .select('*, variant:product_variants(*, product:products(*))')
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.stock_ledger = { data: result, timestamp: now };
+    return result;
   },
 
   // --- Expenses ---
-  async getExpenses() {
+  async getExpenses(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cache.expenses && (now - cache.expenses.timestamp < CACHE_TTL_MS)) {
+      return cache.expenses.data;
+    }
     const { data, error } = await supabase
       .from('expenses')
       .select('*')
       .order('expense_date', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const result = data || [];
+    cache.expenses = { data: result, timestamp: now };
+    return result;
   },
 
   async addExpense(category: string, amount: number, description: string) {
@@ -286,6 +381,7 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
+    clearPosCache(['expenses']);
     return data;
   },
 
@@ -295,5 +391,6 @@ export const dbService = {
       .delete()
       .eq('id', id);
     if (error) throw error;
+    clearPosCache(['expenses']);
   }
 };

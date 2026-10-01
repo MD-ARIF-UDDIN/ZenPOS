@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import { Plus, Trash2 } from 'lucide-react';
+import { Pagination } from './Pagination';
 
 interface ExpensesViewProps {
   onRefreshStats: () => void;
@@ -14,6 +15,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Form State
   const [category, setCategory] = useState('Utilities');
@@ -83,17 +86,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-          <Plus size={18} /> Log New Expense
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
+          <Plus size={15} /> Log New Expense
         </button>
       </div>
 
       {loading ? (
-        <div>Loading expense ledger...</div>
+        <div style={{ padding: '16px', fontSize: '13px' }}>Loading expense ledger...</div>
       ) : (
         <>
           {/* Desktop Table View */}
@@ -106,40 +109,44 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                   <th>Category</th>
                   <th>Description</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th style={{ width: '100px', textAlign: 'center' }}>Actions</th>
+                  <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {expenses.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
                       No expenses logged yet.
                     </td>
                   </tr>
                 ) : (
-                  expenses.map((exp, idx) => (
+                  expenses
+                    .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                    .map((exp, idx) => (
                     <tr key={exp.id}>
-                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
-                      <td>{new Date(exp.expense_date).toLocaleDateString()}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {(currentPage - 1) * pageSize + idx + 1}
+                      </td>
+                      <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(exp.expense_date).toLocaleDateString()}</td>
                       <td>
                         <span style={{
                           background: 'rgba(239, 68, 68, 0.08)',
                           color: 'var(--color-danger)',
-                          padding: '4px 8px',
+                          padding: '2px 6px',
                           borderRadius: '4px',
-                          fontSize: '12px',
-                          fontWeight: 600
+                          fontSize: '11px',
+                          fontWeight: 700
                         }}>{exp.category}</span>
                       </td>
-                      <td style={{ color: exp.description ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      <td style={{ fontSize: '12.5px', color: exp.description ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {exp.description || 'No description provided'}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-danger)' }}>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '13px', color: 'var(--color-danger)' }}>
                         ৳{exp.amount.toFixed(2)}
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button className="btn btn-danger" style={{ padding: '6px 10px' }} onClick={() => handleDeleteExpense(exp.id)} disabled={deletingId === exp.id}>
-                          {deletingId === exp.id ? 'Removing...' : <><Trash2 size={14} /> Remove</>}
+                        <button className="btn btn-danger btn-sm" style={{ padding: '0 8px', fontSize: '11px' }} onClick={() => handleDeleteExpense(exp.id)} disabled={deletingId === exp.id}>
+                          {deletingId === exp.id ? '...' : <><Trash2 size={12} style={{ marginRight: '2px' }} /> Delete</>}
                         </button>
                       </td>
                     </tr>
@@ -147,52 +154,68 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                 )}
               </tbody>
             </table>
+            <Pagination 
+              currentPage={currentPage}
+              totalItems={expenses.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           </div>
 
           {/* Mobile Cards View */}
-          <div className="mobile-cart-list" style={{ flexDirection: 'column', gap: '12px' }}>
+          <div className="mobile-cart-list" style={{ flexDirection: 'column', gap: '8px' }}>
             {expenses.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
                 No expenses logged yet.
               </div>
             ) : (
-              expenses.map((exp) => (
-                <div className="card" key={exp.id} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+              expenses
+                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                .map((exp) => (
+                <div className="card" key={exp.id} style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#fff' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{
                       background: 'rgba(239, 68, 68, 0.08)',
                       color: 'var(--color-danger)',
-                      padding: '4px 8px',
+                      padding: '2px 6px',
                       borderRadius: '4px',
-                      fontSize: '12px',
+                      fontSize: '11px',
                       fontWeight: 700
                     }}>{exp.category}</span>
-                    <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteExpense(exp.id)} disabled={deletingId === exp.id}>
-                      {deletingId === exp.id ? '...' : <Trash2 size={12} />}
+                    <button className="btn btn-danger btn-sm" style={{ width: '24px', height: '24px', padding: 0 }} onClick={() => handleDeleteExpense(exp.id)} disabled={deletingId === exp.id}>
+                      {deletingId === exp.id ? '...' : <Trash2 size={11} />}
                     </button>
                   </div>
                   
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                     {exp.description || 'No description provided'}
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef2f2', padding: '8px 12px', borderRadius: '8px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', fontSize: '12px' }}>
                     <span>Date: <span style={{ fontWeight: 600 }}>{new Date(exp.expense_date).toLocaleDateString()}</span></span>
-                    <span style={{ fontWeight: 800, color: 'var(--color-danger)' }}>৳{exp.amount.toFixed(2)}</span>
+                    <span>Amount: <span style={{ fontWeight: 800, color: 'var(--color-danger)' }}>৳{exp.amount.toFixed(2)}</span></span>
                   </div>
                 </div>
               ))
             )}
+            <Pagination 
+              currentPage={currentPage}
+              totalItems={expenses.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
           </div>
         </>
       )}
 
       {/* LOG EXPENSE MODAL */}
       {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 500 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '400px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Log Business Expense</h3>
-            <form onSubmit={handleCreateExpense} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '18px' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Log Business Expense</h3>
+            <form onSubmit={handleCreateExpense} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               
               <div className="form-group">
                 <label className="form-label">Expense Category *</label>
@@ -232,11 +255,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                   value={description} 
                   onChange={e => setDescription(e.target.value)} 
                   placeholder="Details of the expense..." 
-                  rows={3} 
+                  rows={2} 
+                  style={{ height: 'auto' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Logging...' : 'Log Expense'}

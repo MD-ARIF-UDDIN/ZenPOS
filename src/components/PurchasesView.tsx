@@ -3,6 +3,7 @@ import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
 import { Plus, Truck } from 'lucide-react';
+import { Pagination } from './Pagination';
 
 interface PurchasesViewProps {
   onRefreshStats: () => void;
@@ -13,6 +14,8 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   // Create Purchase workflow states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -33,9 +36,11 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
   const [supPhone, setSupPhone] = useState('');
 
   const loadData = async () => {
-    const purchList = await dbService.getPurchases();
-    const supList = await dbService.getSuppliers();
-    const varList = await dbService.getVariants();
+    const [purchList, supList, varList] = await Promise.all([
+      dbService.getPurchases(),
+      dbService.getSuppliers(),
+      dbService.getVariants()
+    ]);
     setPurchases(purchList);
     setSuppliers(supList);
     setVariants(varList);
@@ -199,9 +204,13 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                 </td>
               </tr>
             ) : (
-              purchases.map((p, idx) => (
+              purchases
+                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                .map((p, idx) => (
                 <tr key={p.id}>
-                  <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
+                  <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {(currentPage - 1) * pageSize + idx + 1}
+                  </td>
                   <td>{new Date(p.purchase_date).toLocaleDateString()}</td>
                   <td>{p.supplier?.name || 'Unknown Supplier'}</td>
                   <td style={{ fontWeight: 'bold' }}>{p.invoice_number}</td>
@@ -224,54 +233,60 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
             )}
           </tbody>
         </table>
+        <Pagination 
+          currentPage={currentPage}
+          totalItems={purchases.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* LOG PURCHASE ORDER MODAL */}
       {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 500 }}>
-          <div className="card purchase-modal-card" style={{ width: '90%', maxWidth: '700px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card purchase-modal-card" style={{ width: '100%', maxWidth: '640px', display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
             {/* Modal Header */}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-start',
-              paddingBottom: '16px',
+              paddingBottom: '10px',
               borderBottom: '1px solid var(--border-color)',
-              marginBottom: '4px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
-                  background: 'rgba(13, 148, 136, 0.1)',
+                  background: 'var(--color-primary-light)',
                   color: 'var(--color-primary)',
                   borderRadius: 'var(--radius-sm)',
-                  padding: '10px',
+                  padding: '8px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <Truck size={22} />
+                  <Truck size={18} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Log Supplier Purchase
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Log Supplier Restock
                   </h3>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    Add restock items, set quantities and cost prices, then confirm receipt
+                  <p style={{ margin: '1px 0 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Add restock items, set quantities and cost prices, then receive stock
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '20px', lineHeight: 1, padding: '4px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1, padding: '4px' }}
               >
                 ✕
               </button>
             </div>
-            <div className="purchase-form-grid">
-              
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
               <div className="form-group">
                 <label className="form-label">Supplier</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
                   <select 
                     className="form-control" 
                     value={selectedSupplierId} 
@@ -282,14 +297,14 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
-                  <button className="btn btn-secondary" style={{ padding: '8px' }} onClick={() => setShowSupplierModal(true)}>
-                    <Plus size={16} />
+                  <button className="btn btn-secondary btn-sm" style={{ padding: '0 8px' }} onClick={() => setShowSupplierModal(true)} title="Add New Supplier">
+                    <Plus size={14} />
                   </button>
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Invoice / Bill Number *</label>
+                <label className="form-label">Invoice / Bill # *</label>
                 <input 
                   type="text" 
                   className="form-control" 
@@ -322,21 +337,26 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                   onChange={e => { setScanQuery(e.target.value); setShowSuggestions(true); }} 
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
-                  placeholder="Click or type to search products..." 
+                  placeholder="Scan barcode or type name/SKU..." 
                   autoComplete="off"
                 />
               </form>
               {showSuggestions && (
                 <div style={{
-                  marginTop: '6px',
+                  position: 'absolute',
+                  top: '60px',
+                  left: 0,
+                  right: 0,
+                  zIndex: 20,
                   border: '1px solid var(--border-color)',
                   borderRadius: 'var(--radius-sm)',
                   background: 'white',
-                  maxHeight: '200px',
+                  maxHeight: '180px',
                   overflowY: 'auto',
+                  boxShadow: 'var(--shadow-lg)'
                 }}>
                   {filteredSuggestions.length === 0 ? (
-                    <div style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>No products found</div>
+                    <div style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>No products found</div>
                   ) : (
                     filteredSuggestions.map(v => (
                       <div
@@ -347,7 +367,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                           setShowSuggestions(false);
                         }}
                         style={{
-                          padding: '10px 16px',
+                          padding: '8px 12px',
                           cursor: 'pointer',
                           borderBottom: '1px solid var(--border-color)',
                           display: 'flex',
@@ -358,14 +378,14 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                         onMouseLeave={e => (e.currentTarget.style.background = 'white')}
                       >
                         <div>
-                          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
                             {v.product?.name}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
                             {v.size} · {v.color} · SKU: {v.sku}
                           </div>
                         </div>
-                        <div style={{ textAlign: 'right', fontSize: '12px', flexShrink: 0, marginLeft: '12px' }}>
+                        <div style={{ textAlign: 'right', fontSize: '11.5px', flexShrink: 0, marginLeft: '10px' }}>
                           <div style={{ color: 'var(--color-primary)', fontWeight: 600 }}>৳{v.purchase_price}</div>
                           <div style={{ color: 'var(--text-muted)' }}>{v.barcode}</div>
                         </div>
@@ -378,35 +398,37 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
 
             {/* Added list */}
             <div>
-              <h5 style={{ marginBottom: '8px', fontSize: '14px' }}>Items to Restock</h5>
-              <div className="table-container" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Items to Restock ({purchaseItems.length})</span>
+              </div>
+              <div className="table-container" style={{ maxHeight: '180px', overflowY: 'auto' }}>
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Product / Size / Color</th>
-                      <th style={{ width: '120px' }}>Quantity</th>
-                      <th style={{ width: '120px' }}>Cost Price (৳)</th>
-                      <th style={{ width: '60px' }}></th>
+                      <th>Product Details</th>
+                      <th style={{ width: '90px' }}>Quantity</th>
+                      <th style={{ width: '100px' }}>Cost Price (৳)</th>
+                      <th style={{ width: '40px' }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {purchaseItems.length === 0 ? (
                       <tr>
-                        <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>
-                          No restock items added. Scan a barcode above to add items.
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                          No items added yet. Search or scan barcode above to add.
                         </td>
                       </tr>
                     ) : (
                       purchaseItems.map((item, idx) => (
                         <tr key={item.variantId}>
-                          <td style={{ fontWeight: 600 }}>{item.name}</td>
+                          <td style={{ fontWeight: 600, fontSize: '12.5px' }}>{item.name}</td>
                           <td>
                             <input 
                               type="number" 
                               className="form-control" 
                               value={item.quantity} 
                               onChange={e => updateItemQty(idx, Number(e.target.value))}
-                              style={{ width: '80px', padding: '6px' }}
+                              style={{ width: '70px', height: '28px', padding: '2px 4px', textAlign: 'center' }}
                             />
                           </td>
                           <td>
@@ -416,11 +438,11 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                               className="form-control" 
                               value={item.unitCost} 
                               onChange={e => updateItemCost(idx, Number(e.target.value))}
-                              style={{ width: '100px', padding: '6px' }}
+                              style={{ width: '85px', height: '28px', padding: '2px 4px', textAlign: 'center' }}
                             />
                           </td>
-                          <td>
-                            <button className="btn btn-danger" style={{ padding: '6px' }} onClick={() => removeItem(idx)}>
+                          <td style={{ textAlign: 'center' }}>
+                            <button className="btn btn-danger btn-sm" style={{ width: '24px', height: '24px', padding: 0 }} onClick={() => removeItem(idx)}>
                               ✕
                             </button>
                           </td>
@@ -432,19 +454,19 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '10px', marginTop: '4px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
-                Total Bill Value:{' '}
-                <span style={{ fontWeight: 'bold', fontSize: '18px', color: 'var(--color-primary)' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Total Bill:</span>{' '}
+                <span style={{ fontWeight: 800, fontSize: '16px', color: 'var(--color-primary)' }}>
                   ৳{(purchaseItems.reduce((acc, i) => acc + (i.quantity * i.unitCost), 0) + shippingCost).toFixed(2)}
                 </span>
                 {shippingCost > 0 && (
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                    (Includes ৳{shippingCost.toFixed(2)} shipping)
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                    (+৳{shippingCost.toFixed(2)} ship)
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
                 <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
                 <button className="btn btn-primary" onClick={handleSubmitPurchase} disabled={purchaseItems.length === 0 || savingPurchase}>
                   {savingPurchase ? 'Receiving...' : 'Receive Stock'}
@@ -457,23 +479,23 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
 
       {/* QUICK ADD SUPPLIER MODAL */}
       {showSupplierModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 600 }}>
-          <div className="card" style={{ width: '400px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Add Supplier</h3>
-            <form onSubmit={handleCreateSupplier} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '12px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '18px' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Add New Supplier</h3>
+            <form onSubmit={handleCreateSupplier} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Supplier Name *</label>
-                <input type="text" className="form-control" value={supName} onChange={e => setSupName(e.target.value)} required />
+                <input type="text" className="form-control" value={supName} onChange={e => setSupName(e.target.value)} required placeholder="e.g. Dhaka Fabrics Ltd" />
               </div>
               <div className="form-group">
                 <label className="form-label">Contact Person</label>
-                <input type="text" className="form-control" value={supContact} onChange={e => setSupContact(e.target.value)} />
+                <input type="text" className="form-control" value={supContact} onChange={e => setSupContact(e.target.value)} placeholder="e.g. Mr. Kabir" />
               </div>
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input type="text" className="form-control" value={supPhone} onChange={e => setSupPhone(e.target.value)} />
+                <input type="text" className="form-control" value={supPhone} onChange={e => setSupPhone(e.target.value)} placeholder="e.g. 01712345678" />
               </div>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowSupplierModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Supplier</button>
               </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
 import { AlertTriangle, List, ArrowDownUp } from 'lucide-react';
+import { Pagination } from './Pagination';
 
 export const StockView: React.FC = () => {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -9,11 +10,19 @@ export const StockView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'inventory' | 'ledger'>('inventory');
   const [loading, setLoading] = useState(true);
 
+  // Pagination states
+  const [invPage, setInvPage] = useState(1);
+  const [invPageSize, setInvPageSize] = useState(10);
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerPageSize, setLedgerPageSize] = useState(10);
+
   const loadData = async () => {
     try {
       setLoading(true);
-      const varList = await dbService.getVariants();
-      const ledgerList = await dbService.getStockLedger();
+      const [varList, ledgerList] = await Promise.all([
+        dbService.getVariants(),
+        dbService.getStockLedger()
+      ]);
       
       setVariants(varList);
       setLedger(ledgerList);
@@ -33,21 +42,21 @@ export const StockView: React.FC = () => {
   if (loading) return <div style={{ padding: '24px' }}>Loading inventory audit reports...</div>;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '6px' }}>
           <button 
-            className={`btn ${activeTab === 'inventory' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${activeTab === 'inventory' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveTab('inventory')}
           >
-            <List size={16} /> Inventory Levels
+            <List size={14} /> Inventory Levels
           </button>
           <button 
-            className={`btn ${activeTab === 'ledger' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${activeTab === 'ledger' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveTab('ledger')}
           >
-            <ArrowDownUp size={16} /> Stock Ledger
+            <ArrowDownUp size={14} /> Stock Ledger
           </button>
         </div>
       </div>
@@ -57,23 +66,23 @@ export const StockView: React.FC = () => {
           {/* Low Stock Alerts banner */}
           {lowStockItems.length > 0 && (
             <div style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid var(--color-danger)',
-              borderRadius: 'var(--radius-md)',
-              padding: '16px 20px',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '10px 14px',
               display: 'flex',
               alignItems: 'center',
-              gap: '16px',
+              gap: '10px',
               color: 'var(--color-danger)'
             }}>
-              <AlertTriangle size={24} />
+              <AlertTriangle size={18} />
               <div>
-                <strong style={{ display: 'block', fontSize: '15px', fontWeight: 700 }}>
+                <strong style={{ display: 'inline-block', fontSize: '13px', fontWeight: 700, marginRight: '6px' }}>
                   {lowStockItems.length === 1 
-                    ? '1 item is running low on stock!' 
-                    : `${lowStockItems.length} items are running low on stock!`}
+                    ? '1 item running low on stock!' 
+                    : `${lowStockItems.length} items running low on stock!`}
                 </strong>
-                <span style={{ fontSize: '13px', opacity: 0.9 }}>
+                <span style={{ fontSize: '12px', opacity: 0.9 }}>
                   Restock recommended to prevent stockouts.
                 </span>
               </div>
@@ -98,7 +107,9 @@ export const StockView: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {variants.map((v, idx) => {
+                {variants
+                  .slice((invPage - 1) * invPageSize, invPage * invPageSize)
+                  .map((v, idx) => {
                   const isLow = v.stock_quantity <= v.min_stock_level;
                   
                   // Compute sold and restocked quantities from stock_ledger for this variant
@@ -112,7 +123,9 @@ export const StockView: React.FC = () => {
 
                   return (
                     <tr key={v.id}>
-                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {(invPage - 1) * invPageSize + idx + 1}
+                      </td>
                       <td style={{ fontWeight: 600 }}>{v.product?.name}</td>
                       <td>{v.sku}</td>
                       <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{v.barcode}</td>
@@ -144,6 +157,13 @@ export const StockView: React.FC = () => {
                 })}
               </tbody>
             </table>
+            <Pagination 
+              currentPage={invPage}
+              totalItems={variants.length}
+              pageSize={invPageSize}
+              onPageChange={setInvPage}
+              onPageSizeChange={setInvPageSize}
+            />
           </div>
         </>
       ) : (
@@ -169,12 +189,16 @@ export const StockView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                ledger.map((log: any, idx: number) => {
+                ledger
+                  .slice((ledgerPage - 1) * ledgerPageSize, ledgerPage * ledgerPageSize)
+                  .map((log: any, idx: number) => {
                   const variant = variants.find(v => v.id === log.variant_id);
                   const isPositive = log.quantity_change > 0;
                   return (
                     <tr key={log.id}>
-                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {(ledgerPage - 1) * ledgerPageSize + idx + 1}
+                      </td>
                       <td>{new Date(log.created_at).toLocaleString()}</td>
                       <td>
                         {variant ? (
@@ -216,6 +240,13 @@ export const StockView: React.FC = () => {
               )}
             </tbody>
           </table>
+          <Pagination 
+            currentPage={ledgerPage}
+            totalItems={ledger.length}
+            pageSize={ledgerPageSize}
+            onPageChange={setLedgerPage}
+            onPageSizeChange={setLedgerPageSize}
+          />
         </div>
       )}
 

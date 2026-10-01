@@ -144,6 +144,25 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- 5b. Automatic Trigger: Auto-confirm email for all new users (removes 'Email not confirmed' requirement)
+CREATE OR REPLACE FUNCTION public.auto_confirm_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.email_confirmed_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created_auto_confirm ON auth.users;
+CREATE TRIGGER on_auth_user_created_auto_confirm
+BEFORE INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.auto_confirm_user();
+
+-- Auto-confirm any existing unconfirmed users
+UPDATE auth.users 
+SET email_confirmed_at = timezone('utc'::text, now()) 
+WHERE email_confirmed_at IS NULL;
+
 -- 6. Automation Triggers for Stock Level updates
 -- When purchase_items are added, increase stock and add ledger entry
 CREATE OR REPLACE FUNCTION public.after_purchase_item_insert()

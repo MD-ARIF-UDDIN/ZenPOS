@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
 
 interface AuthViewProps {
@@ -18,7 +18,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     setLoading(true);
     setErrorMsg('');
 
-    // Local override for dev testing
+    // Quick admin fallback for testing
     if (email === 'admin@gmail.com' && password === '123') {
       const mockSession = {
         user: {
@@ -46,7 +46,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
         onAuthSuccess(data.session);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'An error occurred during authentication');
+      if (err.message && err.message.toLowerCase().includes('email not confirmed')) {
+        setErrorMsg('Email not confirmed. Please turn off "Confirm email" in Supabase Auth Settings.');
+      } else {
+        setErrorMsg(err.message || 'Invalid email or password');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,202 +63,156 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
       alignItems: 'center',
       minHeight: '100vh',
       width: '100%',
-      backgroundColor: '#f1f5f9',
-      background: 'radial-gradient(circle at 10% 20%, rgba(212, 163, 89, 0.08) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(180, 130, 60, 0.06) 0%, transparent 40%), #f8fafc',
-      position: 'relative',
-      overflow: 'hidden',
-      padding: '24px'
+      backgroundColor: '#f8fafc',
+      background: 'linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%)',
+      padding: '20px'
     }}>
-      {/* Self-contained CSS for Mobile Responsiveness & Theme styling */}
       <style>{`
-        .login-title {
-          font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
-          font-size: 22px;
-          font-weight: 900;
-          letter-spacing: 5px;
-          text-transform: uppercase;
-          background: linear-gradient(135deg, #d4a359 0%, #b4823c 100%);
-          -webkit-background-clip: text !important;
-          -webkit-text-fill-color: transparent !important;
-          background-clip: text !important;
-          color: transparent !important;
-          display: inline-block;
-          margin-bottom: 2px;
+        .auth-card {
+          width: 100%;
+          max-width: 380px;
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          padding: 32px 28px;
+          box-shadow: 0 10px 25px -5px rgba(11, 37, 69, 0.08), 0 8px 10px -6px rgba(11, 37, 69, 0.04);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
         }
-        @media (max-width: 480px) {
-          .login-card {
-            padding: 24px !important;
-            border-radius: 16px !important;
-            gap: 20px !important;
-          }
-          .login-logo {
-            width: 76px !important;
-            height: 76px !important;
-          }
-          .login-title {
-            font-size: 18px !important;
-            letter-spacing: 3px !important;
-          }
+        .auth-input:focus {
+          border-color: #0b2545 !important;
+          box-shadow: 0 0 0 3px rgba(11, 37, 69, 0.12) !important;
         }
-        .login-btn {
-          background-color: #d4a359 !important;
-          border-color: #d4a359 !important;
+        .auth-submit-btn {
+          background-color: #0b2545 !important;
           color: #ffffff !important;
-          box-shadow: 0 4px 14px rgba(212, 163, 89, 0.35) !important;
-          transition: all 0.2s ease-in-out !important;
+          border: none;
+          height: 42px;
+          border-radius: 8px;
+          font-weight: 700;
+          font-size: 14px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.15s ease;
+          box-shadow: 0 2px 8px rgba(11, 37, 69, 0.25);
         }
-        .login-btn:hover {
-          background-color: #c29247 !important;
-          border-color: #c29247 !important;
-          box-shadow: 0 6px 20px rgba(212, 163, 89, 0.45) !important;
+        .auth-submit-btn:hover {
+          background-color: #06172d !important;
+          box-shadow: 0 4px 12px rgba(11, 37, 69, 0.35);
           transform: translateY(-1px);
         }
-        .login-btn:active {
+        .auth-submit-btn:active {
           transform: translateY(0);
-        }
-        .login-input:focus {
-          border-color: #d4a359 !important;
-          box-shadow: 0 0 0 3px rgba(212, 163, 89, 0.15) !important;
         }
       `}</style>
 
-      {/* Decorative Background Blur Blobs */}
-      <div style={{
-        position: 'absolute',
-        top: '20%',
-        left: '25%',
-        width: '300px',
-        height: '300px',
-        background: 'rgba(212, 163, 89, 0.12)',
-        filter: 'blur(100px)',
-        borderRadius: '50%',
-        zIndex: 0
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: '20%',
-        right: '25%',
-        width: '350px',
-        height: '350px',
-        background: 'rgba(180, 130, 60, 0.08)',
-        filter: 'blur(120px)',
-        borderRadius: '50%',
-        zIndex: 0
-      }} />
-
-      {/* Login Card (Glassmorphic & Responsive) */}
-      <div className="card login-card" style={{
-        width: '100%',
-        maxWidth: '420px',
-        padding: '40px',
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.6)',
-        boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '24px',
-        borderRadius: '24px',
-        zIndex: 1
-      }}>
-        
-        {/* Header Logo */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ position: 'relative', display: 'inline-block', marginBottom: '16px' }}>
-            <div style={{
-              position: 'absolute',
-              inset: '-4px',
-              background: 'linear-gradient(135deg, #d4a359, #b4823c)',
-              borderRadius: '20px',
-              filter: 'blur(8px)',
-              opacity: 0.25
-            }} />
-            <img 
-              src={logoImg} 
-              alt="ZenPOS Logo" 
-              className="login-logo"
-              style={{ 
-                width: '88px', 
-                height: '88px', 
-                objectFit: 'contain', 
-                borderRadius: '18px',
-                border: '3px solid #fff',
-                position: 'relative',
-                boxShadow: 'var(--shadow-md)'
-              }} 
-            />
-          </div>
+      <div className="auth-card">
+        {/* Brand Header */}
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+          <img 
+            src={logoImg} 
+            alt="Rajmahal Logo" 
+            style={{ 
+              width: '68px', 
+              height: '68px', 
+              objectFit: 'contain', 
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              padding: '2px',
+              backgroundColor: '#ffffff'
+            }} 
+          />
           <div>
-            <span className="login-title">
+            <h2 style={{
+              fontFamily: "'Outfit', 'Plus Jakarta Sans', sans-serif",
+              fontSize: '20px',
+              fontWeight: 900,
+              letterSpacing: '2.5px',
+              color: '#0b2545',
+              textTransform: 'uppercase',
+              margin: 0
+            }}>
               RAJMAHAL
-            </span>
+            </h2>
+            <p style={{
+              fontSize: '10.5px',
+              fontWeight: 700,
+              letterSpacing: '1.5px',
+              color: '#64748b',
+              textTransform: 'uppercase',
+              margin: '2px 0 0 0'
+            }}>
+              Elegance — Mens Wear
+            </p>
           </div>
         </div>
 
+        {/* Error Alert */}
         {errorMsg && (
           <div style={{
             background: '#fef2f2',
             border: '1px solid #fecaca',
             color: '#ef4444',
-            padding: '12px',
-            borderRadius: '12px',
-            fontSize: '13px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            fontSize: '12px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px'
           }}>
-            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <AlertCircle size={15} style={{ flexShrink: 0 }} />
             <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* Input Form */}
-        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          
-          <div className="form-group">
-            <label className="form-label" style={{ color: '#475569', fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'block' }}>Email Address *</label>
+        {/* Form */}
+        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ color: '#475569', fontWeight: 600, fontSize: '12px' }}>Email</label>
             <div style={{ position: 'relative' }}>
-              <Mail size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <Mail size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
                 type="email"
-                className="form-control login-input"
+                className="form-control auth-input"
                 style={{
-                  paddingLeft: '40px',
+                  paddingLeft: '36px',
                   backgroundColor: '#ffffff',
                   borderColor: '#e2e8f0',
                   color: '#1e293b',
                   width: '100%',
-                  height: '44px',
-                  borderRadius: '12px',
-                  fontSize: '14px',
-                  transition: 'all 0.2s'
+                  height: '38px',
+                  borderRadius: '8px',
+                  fontSize: '13px'
                 }}
-                placeholder="owner@clothingstore.com"
+                placeholder="admin@gmail.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
+                autoFocus
               />
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" style={{ color: '#475569', fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'block' }}>Password *</label>
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ color: '#475569', fontWeight: 600, fontSize: '12px' }}>Password</label>
             <div style={{ position: 'relative' }}>
-              <Lock size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <Lock size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
                 type="password"
-                className="form-control login-input"
+                className="form-control auth-input"
                 style={{
-                  paddingLeft: '40px',
+                  paddingLeft: '36px',
                   backgroundColor: '#ffffff',
                   borderColor: '#e2e8f0',
                   color: '#1e293b',
                   width: '100%',
-                  height: '44px',
-                  borderRadius: '12px',
-                  fontSize: '14px',
-                  transition: 'all 0.2s'
+                  height: '38px',
+                  borderRadius: '8px',
+                  fontSize: '13px'
                 }}
                 placeholder="••••••••"
                 value={password}
@@ -266,68 +224,29 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
 
           <button
             type="submit"
-            className="btn btn-primary login-btn"
-            style={{ 
-              width: '100%', 
-              padding: '14px', 
-              marginTop: '8px', 
-              fontSize: '15px', 
-              fontWeight: 700,
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(212, 163, 89, 0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px'
-            }}
+            className="auth-submit-btn"
+            style={{ marginTop: '4px' }}
             disabled={loading}
           >
-            {loading ? 'Verifying account...' : 'Sign In to Terminal'}
+            {loading ? 'Signing in...' : (
+              <>
+                Sign In <ArrowRight size={15} />
+              </>
+            )}
           </button>
         </form>
 
-        {/* Developer Footer */}
-        <div style={{ 
-          borderTop: '1px solid #e2e8f0', 
-          paddingTop: '20px', 
-          marginTop: '4px', 
-          textAlign: 'center', 
-          fontSize: '11px', 
-          color: '#64748b',
-          lineHeight: '1.6'
+        {/* Minimal Subtle Footer */}
+        <div style={{
+          textAlign: 'center',
+          fontSize: '11px',
+          color: '#94a3b8',
+          borderTop: '1px solid #f1f5f9',
+          paddingTop: '12px',
+          marginTop: '2px'
         }}>
-          <div style={{ 
-            fontFamily: "'Outfit', sans-serif",
-            fontWeight: 800, 
-            color: '#b4823c', 
-            letterSpacing: '2px', 
-            fontSize: '12px',
-            marginBottom: '6px' 
-          }}>
-            ZenPOS V1
-          </div>
-          Developed By: <span style={{ fontWeight: 600, color: '#334155' }}>MD Arif Uddin</span>
-          <br />
-          Contact:{' '}
-          <a 
-            href="https://wa.me/8801825334505" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            style={{ 
-              color: '#b4823c', 
-              fontWeight: 700, 
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '3px'
-            }}
-            onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-            onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-          >
-            💬 01825334505
-          </a>
+          ZenPOS Terminal • Rajmahal Fashion
         </div>
-
       </div>
     </div>
   );

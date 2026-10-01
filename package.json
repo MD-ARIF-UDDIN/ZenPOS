@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
+    "@types/jsbarcode": "^3.11.4",
+    "jsbarcode": "^3.12.3",
     "lucide-react": "^1.27.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

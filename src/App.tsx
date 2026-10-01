@@ -35,8 +35,8 @@ function App() {
 
   const refreshStats = async () => {
     try {
-      const stats = await dbService.getDashboardStats();
-      setLowStockCount(stats.lowStockAlerts);
+      const count = await dbService.getLowStockCount();
+      setLowStockCount(count);
     } catch (e) {
       console.error(e);
     }
@@ -164,7 +164,7 @@ function App() {
       {/* Main Panel */}
       <div className="main-content">
         <header className="header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
               className="mobile-menu-btn" 
               onClick={() => setMobileMenuOpen(true)}
@@ -173,46 +173,88 @@ function App() {
                 border: 'none',
                 cursor: 'pointer',
                 color: 'var(--text-primary)',
-                padding: '4px'
+                padding: '4px',
+                display: 'none',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
+              title="Open Navigation Menu"
             >
-              <Menu size={24} />
+              <Menu size={20} />
             </button>
-            <h1 className="header-title" style={{ fontSize: '24px', fontWeight: 700 }}>{getPageTitle()}</h1>
+            <div>
+              <h1 className="header-title" style={{ margin: 0 }}>{getPageTitle()}</h1>
+            </div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              fontSize: '11px',
+              fontWeight: 700,
+              color: '#047857'
+            }} className="header-live-pill">
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+              Live POS Terminal
+            </div>
           </div>
           <div className="header-actions">
-            
+            {/* Store Tag */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              color: 'var(--color-primary)',
+              background: 'var(--color-primary-light)',
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid rgba(11, 37, 69, 0.1)',
+              letterSpacing: '0.6px',
+              textTransform: 'uppercase'
+            }} className="header-store-pill">
+              <span>🏛️</span> RAJMAHAL
+            </div>
+
             {/* User Profile */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              fontSize: '13px',
+              gap: '6px',
+              fontSize: '12px',
               color: 'var(--text-secondary)',
-              fontWeight: 500
+              fontWeight: 600,
+              background: 'var(--bg-primary)',
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-color)'
             }}>
-              <User size={16} />
+              <User size={13} style={{ color: 'var(--color-primary)' }} />
               <span className="user-email">{userEmail}</span>
             </div>
 
             {/* Refresh stats manually */}
             <button 
-              className="btn btn-secondary" 
-              style={{ padding: '8px' }} 
+              className="btn btn-secondary btn-sm" 
               onClick={refreshStats}
               title="Refresh inventory counts"
+              style={{ width: '32px', height: '32px', padding: 0 }}
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={14} />
             </button>
 
             {/* Logout */}
             <button 
-              className="btn btn-secondary" 
-              style={{ padding: '8px', border: '1px solid #fecaca', color: '#ef4444', background: '#fef2f2' }} 
+              className="btn btn-secondary btn-sm" 
+              style={{ width: '32px', height: '32px', padding: 0, border: '1px solid #fecaca', color: '#ef4444', background: '#fef2f2' }} 
               onClick={handleLogout}
               title="Sign Out"
             >
-              <LogOut size={16} />
+              <LogOut size={14} />
             </button>
 
           </div>

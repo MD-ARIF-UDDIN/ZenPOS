@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2, Tag } from 'lucide-react';
+import { Plus, Trash2, Tag, Printer, Sparkles, Search } from 'lucide-react';
+import { BarcodeLabelModal } from './BarcodeLabelModal';
+import { Pagination } from './Pagination';
 
 interface ProductsViewProps {
   onRefreshStats: () => void;
@@ -13,6 +15,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
+  const [barcodeVariantModal, setBarcodeVariantModal] = useState<ProductVariant | null>(null);
+  
+  // Pagination and Search states
+  const [prodSearch, setProdSearch] = useState('');
+  const [prodPage, setProdPage] = useState(1);
+  const [prodPageSize, setProdPageSize] = useState(8);
+  const [varPage, setVarPage] = useState(1);
+  const [varPageSize, setVarPageSize] = useState(10);
 
   // Forms states
   const [showProductModal, setShowProductModal] = useState(false);
@@ -35,8 +45,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [deletingVariantId, setDeletingVariantId] = useState<string | null>(null);
 
   const loadData = async () => {
-    const prodList = await dbService.getProducts();
-    const varList = await dbService.getVariants();
+    const [prodList, varList] = await Promise.all([
+      dbService.getProducts(),
+      dbService.getVariants()
+    ]);
     setProducts(prodList);
     setVariants(varList);
     if (prodList.length > 0 && !activeProduct) {
@@ -165,44 +177,107 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   // Filter variants for selected product
+  // Filter variants for selected product
   const activeVariants = variants.filter(v => v.product_id === activeProduct?.id);
+  const paginatedVariants = activeVariants.slice((varPage - 1) * varPageSize, varPage * varPageSize);
+
+  // Filter products by search
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(prodSearch.toLowerCase()) ||
+    (p.category && p.category.toLowerCase().includes(prodSearch.toLowerCase())) ||
+    (p.brand && p.brand.toLowerCase().includes(prodSearch.toLowerCase()))
+  );
+  const paginatedProducts = filteredProducts.slice((prodPage - 1) * prodPageSize, prodPage * prodPageSize);
 
   return (
     <div className="products-layout" style={{ alignItems: 'start' }}>
       
       {/* Product List */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: 'calc(100vh - 110px)', overflowY: 'auto', padding: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Products</h3>
-          <button className="btn btn-primary" style={{ padding: '6px 12px' }} onClick={() => setShowProductModal(true)}>
-            <Plus size={16} /> Add
+          <div>
+            <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>Products</h3>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredProducts.length} items cataloged</span>
+          </div>
+          <button className="btn btn-primary btn-sm" style={{ padding: '4px 10px' }} onClick={() => setShowProductModal(true)}>
+            <Plus size={14} /> Add Product
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {products.map(p => (
-            <div
-              key={p.id}
-              onClick={() => setActiveProduct(p)}
-              style={{
-                padding: '12px 16px',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: activeProduct?.id === p.id ? 'var(--bg-surface-hover)' : 'transparent',
-                border: activeProduct?.id === p.id ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
-                cursor: 'pointer',
-                transition: 'all var(--transition-fast)'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                <span style={{ fontWeight: 600 }}>{p.name}</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{p.category}</span>
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                {p.brand} | {variants.filter(v => v.product_id === p.id).length} Variants
-              </div>
-            </div>
-          ))}
+        {/* Product Search */}
+        <div style={{ position: 'relative' }}>
+          <Search size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+          <input 
+            type="text" 
+            className="form-control" 
+            placeholder="Search by name, category, brand..."
+            value={prodSearch}
+            onChange={(e) => {
+              setProdSearch(e.target.value);
+              setProdPage(1);
+            }}
+            style={{ paddingLeft: '28px', height: '32px', fontSize: '12px' }}
+          />
         </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
+          {paginatedProducts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+              No matching products found.
+            </div>
+          ) : (
+            paginatedProducts.map(p => {
+              const count = variants.filter(v => v.product_id === p.id).length;
+              const isSelected = activeProduct?.id === p.id;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    setActiveProduct(p);
+                    setVarPage(1);
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: isSelected ? 'var(--color-primary-light)' : 'transparent',
+                    border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                    cursor: 'pointer',
+                    transition: 'all var(--transition-fast)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, fontSize: '12.5px', color: isSelected ? 'var(--color-primary)' : 'var(--text-primary)', maxWidth: '170px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {p.name}
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
+                      {p.category || 'General'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    <span>{p.brand || 'No brand'}</span>
+                    <span style={{ fontSize: '10.5px', color: count > 0 ? 'var(--color-primary)' : '#94a3b8', fontWeight: 600 }}>
+                      {count} {count === 1 ? 'Variant' : 'Variants'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {filteredProducts.length > 0 && (
+          <Pagination 
+            currentPage={prodPage}
+            totalItems={filteredProducts.length}
+            pageSize={prodPageSize}
+            onPageChange={setProdPage}
+            onPageSizeChange={setProdPageSize}
+            pageSizeOptions={[8, 15, 25, 50, 100]}
+          />
+        )}
       </div>
 
       {/* Selected Product Variants Panel */}
@@ -235,7 +310,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
             </div>
 
             <div>
-              <h4 style={{ marginBottom: '12px', fontSize: '15px' }}>Sizes, Colors & Barcodes</h4>
+              <h4 style={{ marginBottom: '12px', fontSize: '15px' }}>Sizes, Colors & Barcodes ({activeVariants.length})</h4>
               
               {/* Desktop Table View */}
               <div className="desktop-cart-table table-container">
@@ -250,7 +325,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <th>Cost</th>
                       <th>Price</th>
                       <th>Stock</th>
-                      <th style={{ width: '50px' }}></th>
+                      <th style={{ width: '130px', textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -261,14 +336,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                         </td>
                       </tr>
                     ) : (
-                      activeVariants.map((v, idx) => (
+                      paginatedVariants.map((v, idx) => (
                         <tr key={v.id}>
-                          <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
+                          <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            {(varPage - 1) * varPageSize + idx + 1}
+                          </td>
                           <td style={{ fontWeight: 'bold' }}>{v.sku}</td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <Tag size={12} style={{ color: 'var(--color-primary)' }} />
-                              <span>{v.barcode}</span>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{v.barcode}</span>
                             </div>
                           </td>
                           <td>{v.size}</td>
@@ -279,15 +356,38 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                             {v.stock_quantity}
                           </td>
                           <td>
-                             <button className="btn btn-danger" style={{ padding: '6px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
-                               {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
-                             </button>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                              <button 
+                                className="btn btn-secondary" 
+                                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                onClick={() => setBarcodeVariantModal(v)}
+                                title="Print Physical Barcode Sticker"
+                              >
+                                <Printer size={12} /> Sticker
+                              </button>
+                              <button 
+                                className="btn btn-danger" 
+                                style={{ padding: '6px' }} 
+                                onClick={() => handleDeleteVariant(v.id)} 
+                                disabled={deletingVariantId === v.id}
+                                title="Delete variant"
+                              >
+                                {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
+                <Pagination 
+                  currentPage={varPage}
+                  totalItems={activeVariants.length}
+                  pageSize={varPageSize}
+                  onPageChange={setVarPage}
+                  onPageSizeChange={setVarPageSize}
+                />
               </div>
 
               {/* Mobile Cards View */}
@@ -297,13 +397,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     No variants defined yet. Add a size/color variant to start tracking stock.
                   </div>
                 ) : (
-                  activeVariants.map(v => (
+                  paginatedVariants.map(v => (
                     <div className="card" key={v.id} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'none' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--color-primary)' }}>{v.sku}</span>
-                         <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
-                           {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
-                         </button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                            onClick={() => setBarcodeVariantModal(v)}
+                          >
+                            <Printer size={12} /> Sticker
+                          </button>
+                          <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
+                            {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
+                          </button>
+                        </div>
                       </div>
                       
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -328,6 +437,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     </div>
                   ))
                 )}
+                <Pagination 
+                  currentPage={varPage}
+                  totalItems={activeVariants.length}
+                  pageSize={varPageSize}
+                  onPageChange={setVarPage}
+                  onPageSizeChange={setVarPageSize}
+                />
               </div>
 
             </div>
@@ -341,27 +457,29 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
       {/* CREATE PRODUCT MODAL */}
       {showProductModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 500 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '450px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Add New Clothing Product</h3>
-            <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Add New Clothing Product</h3>
+            <form onSubmit={handleCreateProduct} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Product Name *</label>
                 <input type="text" className="form-control" value={newProductName} onChange={e => setNewProductName(e.target.value)} required placeholder="e.g. Slim Denim Jeans" />
               </div>
-              <div className="form-group">
-                <label className="form-label">Category</label>
-                <input type="text" className="form-control" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="e.g. Pants" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Brand</label>
-                <input type="text" className="form-control" value={newProductBrand} onChange={e => setNewProductBrand(e.target.value)} placeholder="e.g. Levi's" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="form-group">
+                  <label className="form-label">Category</label>
+                  <input type="text" className="form-control" value={newProductCategory} onChange={e => setNewProductCategory(e.target.value)} placeholder="e.g. Pants" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Brand</label>
+                  <input type="text" className="form-control" value={newProductBrand} onChange={e => setNewProductBrand(e.target.value)} placeholder="e.g. Levi's" />
+                </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Description</label>
-                <textarea className="form-control" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} placeholder="Product description..." rows={3} />
+                <textarea className="form-control" value={newProductDesc} onChange={e => setNewProductDesc(e.target.value)} placeholder="Product description..." rows={2} style={{ height: 'auto' }} />
               </div>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowProductModal(false)}>Cancel</button>
                  <button type="submit" className="btn btn-primary" disabled={savingProduct}>
                    {savingProduct ? 'Creating...' : 'Create Product'}
@@ -374,10 +492,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
       {/* CREATE VARIANT MODAL */}
       {showVariantModal && activeProduct && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 500 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '450px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Add Variant for {activeProduct.name}</h3>
-            <form onSubmit={handleCreateVariant} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Add Variant for {activeProduct.name}</h3>
+            <form onSubmit={handleCreateVariant} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* Size Selector */}
               <div className="form-group">
                 <label className="form-label">Size *</label>
@@ -388,23 +506,23 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   onChange={e => setVarSize(e.target.value)}
                   required
                   placeholder="Select below or type custom size"
-                  style={{ marginBottom: '8px' }}
+                  style={{ marginBottom: '6px' }}
                 />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                   {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '28', '30', '32', '34', '36', '38', '40', '42'].map(s => (
                     <span
                       key={s}
                       onClick={() => setVarSize(s)}
                       style={{
-                        padding: '4px 12px',
-                        borderRadius: '20px',
-                        fontSize: '12px',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
                         fontWeight: 600,
                         cursor: 'pointer',
-                        border: varSize === s ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
-                        background: varSize === s ? 'rgba(13, 148, 136, 0.1)' : 'var(--bg-primary)',
+                        border: varSize === s ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        background: varSize === s ? 'var(--color-primary-light)' : 'var(--bg-primary)',
                         color: varSize === s ? 'var(--color-primary)' : 'var(--text-secondary)',
-                        transition: 'all 0.15s'
+                        transition: 'all 0.12s'
                       }}
                     >
                       {s}
@@ -423,20 +541,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   onChange={e => setVarColor(e.target.value)}
                   required
                   placeholder="Select below or type custom color"
-                  style={{ marginBottom: '8px' }}
+                  style={{ marginBottom: '6px' }}
                 />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                   {[
                     { label: 'White', hex: '#f8fafc' },
-                    { label: 'Ivory White', hex: '#fffff0' },
-                    { label: 'Black', hex: '#1a1a1a' },
-                    { label: 'Classic Black', hex: '#111' },
-                    { label: 'Navy Blue', hex: '#1e3a5f' },
+                    { label: 'Black', hex: '#111' },
+                    { label: 'Navy Blue', hex: '#0b2545' },
                     { label: 'Royal Blue', hex: '#2563eb' },
                     { label: 'Sky Blue', hex: '#7dd3fc' },
                     { label: 'Red', hex: '#ef4444' },
                     { label: 'Maroon', hex: '#7f1d1d' },
-                    { label: 'Pink', hex: '#f9a8d4' },
                     { label: 'Green', hex: '#16a34a' },
                     { label: 'Olive', hex: '#84794e' },
                     { label: 'Yellow', hex: '#facc15' },
@@ -453,19 +568,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '5px',
-                        padding: '4px 10px',
-                        borderRadius: '20px',
-                        fontSize: '12px',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
                         fontWeight: 600,
                         cursor: 'pointer',
-                        border: varColor === c.label ? '2px solid var(--color-primary)' : '1px solid var(--border-color)',
-                        background: varColor === c.label ? 'rgba(13, 148, 136, 0.1)' : 'var(--bg-primary)',
+                        border: varColor === c.label ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        background: varColor === c.label ? 'var(--color-primary-light)' : 'var(--bg-primary)',
                         color: varColor === c.label ? 'var(--color-primary)' : 'var(--text-secondary)',
-                        transition: 'all 0.15s'
+                        transition: 'all 0.12s'
                       }}
                     >
-                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: c.hex, border: '1px solid #ccc', flexShrink: 0 }} />
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: c.hex, border: '1px solid #cbd5e1', flexShrink: 0 }} />
                       {c.label}
                     </span>
                   ))}
@@ -473,8 +588,30 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               </div>
               
               <div className="form-group">
-                <label className="form-label">Barcode (Scan to Autofill) *</label>
-                <input type="text" className="form-control" value={varBarcode} onChange={e => setVarBarcode(e.target.value)} required placeholder="Scan tag or type unique code" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                  <label className="form-label" style={{ margin: 0 }}>Barcode (Scan to Autofill) *</label>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm" 
+                    style={{ padding: '0 6px', fontSize: '10.5px', height: '24px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                    onClick={() => {
+                      const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
+                      const prefix = activeProduct?.name ? activeProduct.name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() : 'RM';
+                      setVarBarcode(`${prefix}${randomDigits}`);
+                      showToast('Unique barcode generated!', 'info');
+                    }}
+                  >
+                    <Sparkles size={11} color="var(--color-primary)" /> Auto-Generate
+                  </button>
+                </div>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={varBarcode} 
+                  onChange={e => setVarBarcode(e.target.value)} 
+                  required 
+                  placeholder="Scan tag or click Auto-Generate" 
+                />
               </div>
 
               <div className="form-group">
@@ -482,7 +619,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                 <input type="text" className="form-control" value={varSku} onChange={e => setVarSku(e.target.value)} placeholder="Auto-generated if empty" />
               </div>
 
-              <div className="form-grid-2">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="form-group">
                   <label className="form-label">Purchase Price (৳)</label>
                   <input type="number" step="0.01" className="form-control" value={varPurchasePrice || ''} onChange={e => setVarPurchasePrice(Number(e.target.value))} required placeholder="Cost Price" />
@@ -496,10 +633,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               <div className="form-group">
                 <label className="form-label">Min Stock Alert Level</label>
                 <input type="number" className="form-control" value={varMinStock || ''} onChange={e => setVarMinStock(Number(e.target.value))} placeholder="5" />
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>Alert when stock drops below this number</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowVariantModal(false)}>Cancel</button>
                  <button type="submit" className="btn btn-primary" disabled={savingVariant}>
                    {savingVariant ? 'Creating...' : 'Create Variant'}
@@ -510,6 +646,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         </div>
       )}
 
+      {/* BARCODE STICKER LABEL MODAL */}
+      {barcodeVariantModal && activeProduct && (
+        <BarcodeLabelModal 
+          variant={barcodeVariantModal} 
+          productName={activeProduct.name} 
+          onClose={() => setBarcodeVariantModal(null)} 
+        />
+      )}
+
     </div>
   );
 };
+
