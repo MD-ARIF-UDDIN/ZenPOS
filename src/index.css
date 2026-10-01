@@ -621,13 +621,25 @@ button, input, select, textarea {
   }
 }
 
-/* Print Optimization for Receipts & Invoices */
+/* Print Optimization for Receipts, Barcodes & Invoices */
+@page {
+  margin: 0mm !important;
+  size: auto;
+}
+
 @media print {
-  body, html {
+  @page {
+    margin: 0mm !important;
+  }
+  html, body {
     background: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  .sidebar, .header, .btn, .mobile-menu-btn, .sidebar-backdrop, .table-container, .pos-layout, .pagination-bar {
+  .sidebar, .header, .btn, .mobile-menu-btn, .sidebar-backdrop, .table-container, .pos-layout, .pagination-bar, .app-header {
     display: none !important;
   }
   div[style*="fixed"] {
@@ -652,18 +664,23 @@ button, input, select, textarea {
   }
   #barcode-print-area {
     display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-    justify-content: flex-start !important;
+    flex-direction: column !important;
     padding: 0 !important;
     background: none !important;
+    margin: 0 !important;
   }
   .barcode-sticker {
     box-shadow: none !important;
-    border: 1px dashed #999 !important;
+    border: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    margin: 3px !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    margin: 0 !important;
+  }
+  .barcode-sticker:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
 }
 

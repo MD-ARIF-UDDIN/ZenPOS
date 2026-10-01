@@ -116,7 +116,141 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   }, [variant.barcode, copies, labelSize, hasDiscount, config]);
 
   const handlePrint = () => {
-    window.print();
+    // Create an isolated iframe for clean, header/footer-free printing
+    let iframe = document.getElementById('barcode-isolated-print-frame') as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'barcode-isolated-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const width = config.printWidth;
+    const height = config.printHeight;
+
+    const stickerItemsHtml = Array.from({ length: copies }).map((_, idx) => {
+      const svgEl = barcodeRefs.current[idx];
+      const svgHtml = svgEl ? svgEl.outerHTML : '';
+      return `
+        <div class="print-label">
+          <div style="font-family: 'Outfit', sans-serif; font-size: ${config.storeFontSize}; font-weight: 900; letter-spacing: 1.2px; color: #000; text-transform: uppercase; line-height: 1.1;">
+            ${storeName}
+          </div>
+          <div style="font-size: ${config.subFontSize}; font-weight: 700; letter-spacing: 0.6px; color: #333; text-transform: uppercase; margin-bottom: 1px;">
+            Elegance — Mens Wear
+          </div>
+          <div style="font-size: ${config.prodFontSize}; font-weight: 700; color: #000; margin-top: 1px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${productName}
+          </div>
+          <div style="font-size: ${config.specFontSize}; color: #222; font-weight: 600; margin-top: 1px;">
+            ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color ? ` • ${variant.color}` : ''}
+          </div>
+          <div style="margin: 1px 0; max-width: 100%; overflow: hidden; display: flex; justify-content: center;">
+            ${svgHtml}
+          </div>
+          ${showPrice ? `
+            <div style="border-top: 1px dashed #444; width: 100%; padding-top: 1px; margin-top: 1px; display: flex; flex-direction: column; align-items: center;">
+              ${hasDiscount ? `
+                <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px;">
+                  <span style="font-size: ${config.specFontSize}; font-weight: 700; color: #555; text-decoration: line-through;">
+                    MRP ৳${variant.selling_price.toFixed(0)}
+                  </span>
+                  <span style="font-size: ${config.offerFontSize}; font-weight: 900; color: #000;">
+                    OFFER ৳${discountPrice.toFixed(0)}
+                  </span>
+                </div>
+                ${promoBadge ? `<div style="font-size: ${config.subFontSize}; font-weight: 800; border: 1px solid #000; padding: 0 3px; border-radius: 2px; text-transform: uppercase;">${promoBadge}</div>` : ''}
+              ` : `
+                <div style="font-size: ${config.priceFontSize}; font-weight: 900; color: #000; letter-spacing: 0.3px;">
+                  MRP: ৳${variant.selling_price.toFixed(2)}
+                </div>
+              `}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title> </title>
+          <style>
+            @page {
+              size: ${width} ${height};
+              margin: 0mm !important;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              width: ${width};
+              background: #ffffff !important;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            }
+            .print-wrapper {
+              display: flex;
+              flex-direction: column;
+              width: 100%;
+            }
+            .print-label {
+              width: ${width} !important;
+              height: ${height} !important;
+              max-width: ${width} !important;
+              max-height: ${height} !important;
+              padding: 1.5mm 2mm !important;
+              margin: 0 !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              justify-content: center !important;
+              text-align: center !important;
+              page-break-after: always !important;
+              break-after: page !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              overflow: hidden !important;
+              background: #ffffff !important;
+            }
+            .print-label:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            svg {
+              max-width: 98% !important;
+              height: auto !important;
+              display: block !important;
+              margin: 0 auto !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-wrapper">
+            ${stickerItemsHtml}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 250);
   };
 
   return (
@@ -134,16 +268,6 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       zIndex: 1000,
       padding: '12px'
     }}>
-      {/* Dynamic Print CSS */}
-      <style>{`
-        @media print {
-          .barcode-sticker {
-            width: ${config.printWidth} !important;
-            min-height: ${config.printHeight} !important;
-          }
-        }
-      `}</style>
-
       {/* Modal Container */}
       <div className="card" style={{
         width: '100%',
@@ -439,7 +563,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         {/* Modal Footer Controls */}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            🖨️ Compatible with POS thermal & sticker label printers ({config.printWidth} x {config.printHeight}).
+            🖨️ Zero headers/footers. Formatted for single-label thermal roll printing ({config.printWidth} x {config.printHeight}).
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
