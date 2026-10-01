@@ -147,8 +147,9 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
       await loadData();
       onRefreshStats();
       showToast('Purchase stock logged successfully!', 'success');
-    } catch (err) {
-      showToast('Error logging purchase', 'error');
+    } catch (err: any) {
+      console.error('Error logging purchase:', err);
+      showToast(err?.message || 'Error logging purchase', 'error');
     } finally {
       setSavingPurchase(false);
     }
@@ -177,7 +178,15 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
       `}</style>
       
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+        <button 
+          className="btn btn-primary" 
+          onClick={() => {
+            if (suppliers.length > 0 && !selectedSupplierId) {
+              setSelectedSupplierId(suppliers[0].id);
+            }
+            setShowAddModal(true);
+          }}
+        >
           <Plus size={18} /> Create Purchase
         </button>
       </div>

@@ -103,7 +103,7 @@ function App() {
       case 'purchases':
         return <PurchasesView onRefreshStats={refreshStats} />;
       case 'stock':
-        return <StockView />;
+        return <StockView onRefreshStats={refreshStats} />;
       case 'sales':
         return <SalesListView />;
       case 'expenses':

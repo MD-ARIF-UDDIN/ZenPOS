@@ -10,6 +10,28 @@ interface ProductsViewProps {
   onRefreshStats: () => void;
 }
 
+export const generateNextBarcode = (variantsList: { barcode?: string }[] = []): string => {
+  const now = new Date();
+  const year = now.getFullYear().toString();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}${month}${day}`; // e.g. "20261001"
+  const reverseDate = todayStr.split('').reverse().join(''); // e.g. "10016202"
+
+  let maxSerial = 0;
+  variantsList.forEach(v => {
+    if (v.barcode && v.barcode.startsWith(reverseDate)) {
+      const serialPart = v.barcode.slice(reverseDate.length);
+      const parsed = parseInt(serialPart, 10);
+      if (!isNaN(parsed) && parsed > maxSerial) {
+        maxSerial = parsed;
+      }
+    }
+  });
+
+  return `${reverseDate}${maxSerial + 1}`;
+};
+
 export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [products, setProducts] = useState<Product[]>([]);
@@ -82,11 +104,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       await loadData();
       setActiveProduct(prod);
       showToast('Product created successfully!', 'success');
-    } catch (err) {
-      showToast('Error creating product', 'error');
+    } catch (err: any) {
+      showToast(err?.message || 'Error creating product', 'error');
     } finally {
       setSavingProduct(false);
     }
+  };
+
+  const handleOpenAddVariant = () => {
+    setVarBarcode(generateNextBarcode(variants));
+    setShowVariantModal(true);
   };
 
   const handleCreateVariant = async (e: React.FormEvent) => {
@@ -126,8 +153,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       await loadData();
       onRefreshStats();
       showToast('Variant added successfully!', 'success');
-    } catch (err) {
-      showToast('Error creating variant', 'error');
+    } catch (err: any) {
+      showToast(err?.message || 'Error creating variant', 'error');
     } finally {
       setSavingVariant(false);
     }
@@ -298,7 +325,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button 
                   className="btn btn-secondary" 
-                  onClick={() => setShowVariantModal(true)}
+                  onClick={handleOpenAddVariant}
                   style={{ border: '1px solid var(--color-primary)', color: 'var(--color-primary)' }}
                 >
                   <Plus size={16} /> Add Variant
@@ -595,10 +622,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     className="btn btn-secondary btn-sm" 
                     style={{ padding: '0 6px', fontSize: '10.5px', height: '24px', display: 'flex', alignItems: 'center', gap: '3px' }}
                     onClick={() => {
-                      const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
-                      const prefix = activeProduct?.name ? activeProduct.name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() : 'RM';
-                      setVarBarcode(`${prefix}${randomDigits}`);
-                      showToast('Unique barcode generated!', 'info');
+                      const nextBc = generateNextBarcode(variants);
+                      setVarBarcode(nextBc);
+                      showToast(`Generated barcode: ${nextBc}`, 'info');
                     }}
                   >
                     <Sparkles size={11} color="var(--color-primary)" /> Auto-Generate

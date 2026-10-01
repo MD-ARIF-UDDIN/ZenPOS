@@ -9,9 +9,11 @@ interface BarcodeLabelModalProps {
   onClose: () => void;
 }
 
+type LabelSizeType = 'thermal-45-35' | 'thermal-50-30' | 'thermal-38-25' | 'compact';
+
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
   const [copies, setCopies] = useState<number>(1);
-  const [labelSize, setLabelSize] = useState<'thermal-50-30' | 'thermal-38-25' | 'compact'>('thermal-50-30');
+  const [labelSize, setLabelSize] = useState<LabelSizeType>('thermal-45-35');
   const [storeName, setStoreName] = useState<string>('RAJMAHAL');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
@@ -19,16 +21,88 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   const [promoBadge, setPromoBadge] = useState<string>('SPECIAL OFFER');
   const barcodeRefs = useRef<(SVGSVGElement | null)[]>([]);
 
+  const getSizeConfig = (size: LabelSizeType) => {
+    switch (size) {
+      case 'thermal-45-35':
+        return {
+          cardWidth: '180px',
+          cardPadding: '8px 10px',
+          storeFontSize: '12px',
+          subFontSize: '8px',
+          prodFontSize: '11px',
+          specFontSize: '9px',
+          priceFontSize: '12.5px',
+          offerFontSize: '13px',
+          barcodeWidth: 1.6,
+          barcodeHeight: 34,
+          barcodeFontSize: 11,
+          printWidth: '45mm',
+          printHeight: '35mm'
+        };
+      case 'thermal-50-30':
+        return {
+          cardWidth: '200px',
+          cardPadding: '8px 10px',
+          storeFontSize: '13px',
+          subFontSize: '8.5px',
+          prodFontSize: '11.5px',
+          specFontSize: '9.5px',
+          priceFontSize: '13px',
+          offerFontSize: '13.5px',
+          barcodeWidth: 1.8,
+          barcodeHeight: 36,
+          barcodeFontSize: 12,
+          printWidth: '50mm',
+          printHeight: '30mm'
+        };
+      case 'thermal-38-25':
+        return {
+          cardWidth: '160px',
+          cardPadding: '6px 8px',
+          storeFontSize: '11px',
+          subFontSize: '7.5px',
+          prodFontSize: '10px',
+          specFontSize: '8.5px',
+          priceFontSize: '11.5px',
+          offerFontSize: '12px',
+          barcodeWidth: 1.4,
+          barcodeHeight: 28,
+          barcodeFontSize: 10,
+          printWidth: '38mm',
+          printHeight: '25mm'
+        };
+      case 'compact':
+      default:
+        return {
+          cardWidth: '140px',
+          cardPadding: '5px 6px',
+          storeFontSize: '10px',
+          subFontSize: '7px',
+          prodFontSize: '9px',
+          specFontSize: '8px',
+          priceFontSize: '10.5px',
+          offerFontSize: '11px',
+          barcodeWidth: 1.2,
+          barcodeHeight: 22,
+          barcodeFontSize: 9,
+          printWidth: '30mm',
+          printHeight: '20mm'
+        };
+    }
+  };
+
+  const config = getSizeConfig(labelSize);
+
   useEffect(() => {
     barcodeRefs.current.forEach((svgEl) => {
       if (svgEl && variant.barcode) {
         try {
           JsBarcode(svgEl, variant.barcode, {
             format: 'CODE128',
-            width: labelSize === 'thermal-38-25' ? 1.4 : 1.8,
-            height: labelSize === 'thermal-38-25' ? 30 : 38,
+            width: config.barcodeWidth,
+            height: config.barcodeHeight,
             displayValue: true,
-            fontSize: labelSize === 'thermal-38-25' ? 10 : 12,
+            fontSize: config.barcodeFontSize,
             font: 'monospace',
             fontOptions: 'bold',
             margin: 2,
@@ -39,7 +113,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         }
       }
     });
-  }, [variant.barcode, copies, labelSize, hasDiscount]);
+  }, [variant.barcode, copies, labelSize, hasDiscount, config]);
 
   const handlePrint = () => {
     window.print();
@@ -60,6 +134,16 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       zIndex: 1000,
       padding: '12px'
     }}>
+      {/* Dynamic Print CSS */}
+      <style>{`
+        @media print {
+          .barcode-sticker {
+            width: ${config.printWidth} !important;
+            min-height: ${config.printHeight} !important;
+          }
+        }
+      `}</style>
+
       {/* Modal Container */}
       <div className="card" style={{
         width: '100%',
@@ -116,17 +200,18 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             />
           </div>
 
-          <div style={{ minWidth: '150px', flex: '1 1 150px' }}>
+          <div style={{ minWidth: '160px', flex: '1 1 160px' }}>
             <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Sticker Size</label>
             <select 
               className="form-control"
               value={labelSize}
-              onChange={e => setLabelSize(e.target.value as any)}
+              onChange={e => setLabelSize(e.target.value as LabelSizeType)}
               style={{ height: '32px', fontSize: '12px', padding: '4px 8px' }}
             >
-              <option value="thermal-50-30">50mm x 30mm (Standard)</option>
+              <option value="thermal-45-35">45mm x 35mm (Standard Tag)</option>
+              <option value="thermal-50-30">50mm x 30mm (Wide Sticker)</option>
               <option value="thermal-38-25">38mm x 25mm (Compact)</option>
-              <option value="compact">Jewelry / Mini Tag</option>
+              <option value="compact">Jewelry / Mini Tag (30mm x 20mm)</option>
             </select>
           </div>
 
@@ -207,7 +292,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         {/* Live Printable Preview Area */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Live Sticker Preview ({copies} {copies === 1 ? 'Label' : 'Labels'})
+            Live Sticker Preview ({copies} {copies === 1 ? 'Label' : 'Labels'} — {labelSize === 'thermal-45-35' ? '45mm x 35mm' : labelSize === 'thermal-50-30' ? '50mm x 30mm' : labelSize === 'thermal-38-25' ? '38mm x 25mm' : 'Compact Mini Tag'})
           </div>
 
           {/* Printable Labels Grid */}
@@ -222,11 +307,11 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 key={idx}
                 className="barcode-sticker"
                 style={{
-                  width: labelSize === 'thermal-38-25' ? '160px' : '200px',
+                  width: config.cardWidth,
                   backgroundColor: '#ffffff',
                   border: '1px dashed #cbd5e1',
                   borderRadius: '6px',
-                  padding: labelSize === 'thermal-38-25' ? '6px' : '8px 10px',
+                  padding: config.cardPadding,
                   textAlign: 'center',
                   boxShadow: 'var(--shadow-xs)',
                   pageBreakInside: 'avoid',
@@ -239,7 +324,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 {/* Store Name */}
                 <div style={{
                   fontFamily: "'Outfit', sans-serif",
-                  fontSize: labelSize === 'thermal-38-25' ? '11px' : '13px',
+                  fontSize: config.storeFontSize,
                   fontWeight: 900,
                   letterSpacing: '1.5px',
                   color: '#0b2545',
@@ -249,7 +334,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   {storeName}
                 </div>
                 <div style={{
-                  fontSize: labelSize === 'thermal-38-25' ? '7.5px' : '8.5px',
+                  fontSize: config.subFontSize,
                   fontWeight: 700,
                   letterSpacing: '0.8px',
                   color: '#64748b',
@@ -261,7 +346,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
                 {/* Product Name */}
                 <div style={{
-                  fontSize: labelSize === 'thermal-38-25' ? '10px' : '11.5px',
+                  fontSize: config.prodFontSize,
                   fontWeight: 700,
                   color: '#1e293b',
                   marginTop: '1px',
@@ -275,7 +360,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
                 {/* Variant Specs */}
                 <div style={{
-                  fontSize: labelSize === 'thermal-38-25' ? '8.5px' : '9.5px',
+                  fontSize: config.specFontSize,
                   color: '#64748b',
                   fontWeight: 600,
                   marginTop: '1px'
@@ -303,7 +388,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                     {hasDiscount ? (
                       <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <span style={{
-                          fontSize: labelSize === 'thermal-38-25' ? '9px' : '10.5px',
+                          fontSize: config.specFontSize,
                           fontWeight: 700,
                           color: '#94a3b8',
                           textDecoration: 'line-through'
@@ -311,7 +396,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                           MRP ৳{variant.selling_price.toFixed(0)}
                         </span>
                         <span style={{
-                          fontSize: labelSize === 'thermal-38-25' ? '12px' : '13.5px',
+                          fontSize: config.offerFontSize,
                           fontWeight: 900,
                           color: '#e11d48'
                         }}>
@@ -320,7 +405,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                       </div>
                     ) : (
                       <div style={{
-                        fontSize: labelSize === 'thermal-38-25' ? '11.5px' : '13px',
+                        fontSize: config.priceFontSize,
                         fontWeight: 900,
                         color: '#0b2545',
                         letterSpacing: '0.5px'
@@ -331,7 +416,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
                     {hasDiscount && promoBadge && (
                       <div style={{
-                        fontSize: labelSize === 'thermal-38-25' ? '7.5px' : '8.5px',
+                        fontSize: config.subFontSize,
                         fontWeight: 800,
                         backgroundColor: '#ffe4e6',
                         color: '#e11d48',
@@ -354,7 +439,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         {/* Modal Footer Controls */}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            🖨️ Compatible with POS thermal & sticker label printers.
+            🖨️ Compatible with POS thermal & sticker label printers ({config.printWidth} x {config.printHeight}).
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>

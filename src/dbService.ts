@@ -143,14 +143,13 @@ export const dbService = {
   },
 
   async addPurchase(supplierId: string, items: { variantId: string; quantity: number; unitCost: number }[], invoiceNumber: string, shippingCost: number = 0) {
-    const totalAmount = items.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0) + shippingCost;
+    const totalAmount = items.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0) + (Number(shippingCost) || 0);
 
     const { data: purchase, error: purchaseError } = await supabase
       .from('purchases')
       .insert({
         supplier_id: supplierId,
         total_amount: totalAmount,
-        shipping_cost: shippingCost,
         invoice_number: invoiceNumber,
         status: 'RECEIVED'
       })
@@ -173,6 +172,44 @@ export const dbService = {
       if (itemsError) throw itemsError;
     }
     clearPosCache(['purchases', 'variants', 'stock_ledger']);
+  },
+
+  async adjustStock(variantId: string, newStockQuantity: number, reason: string = 'Manual stock adjustment') {
+    // 1. Get existing variant stock
+    const { data: variant, error: getErr } = await supabase
+      .from('product_variants')
+      .select('stock_quantity')
+      .eq('id', variantId)
+      .single();
+    if (getErr) throw getErr;
+
+    const currentStock = variant?.stock_quantity ?? 0;
+    const delta = newStockQuantity - currentStock;
+
+    // 2. Update variant stock
+    const { data: updatedVariant, error: updateErr } = await supabase
+      .from('product_variants')
+      .update({ stock_quantity: newStockQuantity })
+      .eq('id', variantId)
+      .select('*, product:products(*)')
+      .single();
+    if (updateErr) throw updateErr;
+
+    // 3. Record transaction in stock ledger
+    const { error: ledgerErr } = await supabase
+      .from('stock_ledger')
+      .insert({
+        variant_id: variantId,
+        transaction_type: 'ADJUSTMENT',
+        quantity_change: delta,
+        notes: reason || `Manual adjustment from ${currentStock} to ${newStockQuantity}`
+      });
+    if (ledgerErr) {
+      console.warn('Could not record stock ledger for adjustment:', ledgerErr);
+    }
+
+    clearPosCache(['variants', 'stock_ledger']);
+    return updatedVariant;
   },
 
   // --- Sales ---
