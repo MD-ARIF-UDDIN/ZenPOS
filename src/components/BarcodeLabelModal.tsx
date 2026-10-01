@@ -9,11 +9,13 @@ interface BarcodeLabelModalProps {
   onClose: () => void;
 }
 
-type LabelSizeType = 'thermal-45-35' | 'thermal-50-30' | 'thermal-38-25' | 'compact';
+type LabelSizeType = 'thermal-35-45-portrait' | 'thermal-45-35-landscape' | 'thermal-50-30' | 'thermal-38-25' | 'compact';
+type OrientationType = 'portrait' | 'landscape' | 'rotated-90';
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
   const [copies, setCopies] = useState<number>(1);
-  const [labelSize, setLabelSize] = useState<LabelSizeType>('thermal-45-35');
+  const [labelSize, setLabelSize] = useState<LabelSizeType>('thermal-35-45-portrait');
+  const [orientation, setOrientation] = useState<OrientationType>('portrait');
   const [storeName, setStoreName] = useState<string>('RAJMAHAL');
   const [showPrice, setShowPrice] = useState<boolean>(true);
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
@@ -21,77 +23,63 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   const [promoBadge, setPromoBadge] = useState<string>('SPECIAL OFFER');
   const barcodeRefs = useRef<(SVGSVGElement | null)[]>([]);
 
-  const getSizeConfig = (size: LabelSizeType) => {
-    switch (size) {
-      case 'thermal-45-35':
-        return {
-          cardWidth: '180px',
-          cardPadding: '6px 8px',
-          storeFontSize: '10.5px',
-          subFontSize: '7px',
-          prodFontSize: '10px',
-          specFontSize: '8px',
-          priceFontSize: '11px',
-          offerFontSize: '11.5px',
-          barcodeWidth: 1.3,
-          barcodeHeight: 22,
-          barcodeFontSize: 9.5,
-          printWidth: '45mm',
-          printHeight: '35mm'
-        };
-      case 'thermal-50-30':
-        return {
-          cardWidth: '200px',
-          cardPadding: '5px 8px',
-          storeFontSize: '10.5px',
-          subFontSize: '6.5px',
-          prodFontSize: '9.5px',
-          specFontSize: '7.5px',
-          priceFontSize: '11px',
-          offerFontSize: '11.5px',
-          barcodeWidth: 1.4,
-          barcodeHeight: 20,
-          barcodeFontSize: 9,
-          printWidth: '50mm',
-          printHeight: '30mm'
-        };
-      case 'thermal-38-25':
-        return {
-          cardWidth: '160px',
-          cardPadding: '4px 6px',
-          storeFontSize: '9px',
-          subFontSize: '6px',
-          prodFontSize: '8.5px',
-          specFontSize: '7px',
-          priceFontSize: '9.5px',
-          offerFontSize: '10px',
-          barcodeWidth: 1.15,
-          barcodeHeight: 16,
-          barcodeFontSize: 8,
-          printWidth: '38mm',
-          printHeight: '25mm'
-        };
-      case 'compact':
-      default:
-        return {
-          cardWidth: '140px',
-          cardPadding: '3px 5px',
-          storeFontSize: '8px',
-          subFontSize: '5.5px',
-          prodFontSize: '7.5px',
-          specFontSize: '6.5px',
-          priceFontSize: '8.5px',
-          offerFontSize: '9px',
-          barcodeWidth: 1.0,
-          barcodeHeight: 14,
-          barcodeFontSize: 7.5,
-          printWidth: '30mm',
-          printHeight: '20mm'
-        };
+  const getSizeConfig = (size: LabelSizeType, orient: OrientationType) => {
+    // Determine base dimensions
+    let width = '35mm';
+    let height = '45mm';
+    let cardW = '155px';
+    let cardH = '195px';
+
+    if (size === 'thermal-35-45-portrait') {
+      width = '35mm';
+      height = '45mm';
+      cardW = '155px';
+      cardH = '195px';
+    } else if (size === 'thermal-45-35-landscape') {
+      width = '45mm';
+      height = '35mm';
+      cardW = '185px';
+      cardH = '150px';
+    } else if (size === 'thermal-50-30') {
+      width = '50mm';
+      height = '30mm';
+      cardW = '200px';
+      cardH = '130px';
+    } else if (size === 'thermal-38-25') {
+      width = '38mm';
+      height = '25mm';
+      cardW = '160px';
+      cardH = '115px';
+    } else if (size === 'compact') {
+      width = '30mm';
+      height = '20mm';
+      cardW = '140px';
+      cardH = '95px';
     }
+
+    const isPortrait = orient === 'portrait' || (orient === 'rotated-90' ? false : (size === 'thermal-35-45-portrait'));
+
+    return {
+      cardWidth: cardW,
+      cardHeight: cardH,
+      cardPadding: isPortrait ? '8px 6px' : '6px 8px',
+      storeFontSize: isPortrait ? '11px' : '10.5px',
+      subFontSize: isPortrait ? '7.5px' : '7px',
+      prodFontSize: isPortrait ? '10.5px' : '10px',
+      specFontSize: isPortrait ? '8.5px' : '8px',
+      priceFontSize: isPortrait ? '11.5px' : '11px',
+      offerFontSize: isPortrait ? '12px' : '11.5px',
+      barcodeWidth: isPortrait ? 1.15 : 1.3,
+      barcodeHeight: isPortrait ? 24 : 20,
+      barcodeFontSize: isPortrait ? 9 : 9.5,
+      printWidth: width,
+      printHeight: height,
+      isPortrait: isPortrait,
+      isRotated: orient === 'rotated-90'
+    };
   };
 
-  const config = getSizeConfig(labelSize);
+  const config = getSizeConfig(labelSize, orientation);
 
   useEffect(() => {
     barcodeRefs.current.forEach((svgEl) => {
@@ -113,10 +101,9 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         }
       }
     });
-  }, [variant.barcode, copies, labelSize, hasDiscount, config]);
+  }, [variant.barcode, copies, labelSize, orientation, hasDiscount, config]);
 
   const handlePrint = () => {
-    // Create an isolated iframe for clean, header/footer-free printing
     let iframe = document.getElementById('barcode-isolated-print-frame') as HTMLIFrameElement;
     if (!iframe) {
       iframe = document.createElement('iframe');
@@ -135,29 +122,42 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
     const width = config.printWidth;
     const height = config.printHeight;
+    const rotationCss = config.isRotated ? `
+      transform: rotate(-90deg);
+      transform-origin: center center;
+    ` : '';
 
     const stickerItemsHtml = Array.from({ length: copies }).map((_, idx) => {
       const svgEl = barcodeRefs.current[idx];
       const svgHtml = svgEl ? svgEl.outerHTML : '';
       return `
-        <div class="print-label">
+        <div class="print-label" style="${rotationCss}">
+          <!-- 1. Store Header (Top) -->
           <div style="font-family: 'Outfit', sans-serif; font-size: ${config.storeFontSize}; font-weight: 900; letter-spacing: 1px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center;">
             ${storeName}
           </div>
           <div style="font-size: ${config.subFontSize}; font-weight: 700; letter-spacing: 0.5px; color: #333333; text-transform: uppercase; line-height: 1; margin: 1px auto 0 auto; text-align: center;">
             Elegance — Mens Wear
           </div>
-          <div style="font-size: ${config.prodFontSize}; font-weight: 700; color: #000000; margin: 1px auto 0 auto; max-width: 95%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; text-align: center;">
+
+          <!-- 2. Product Name -->
+          <div style="font-size: ${config.prodFontSize}; font-weight: 700; color: #000000; margin: 2px auto 0 auto; max-width: 95%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; text-align: center;">
             ${productName}
           </div>
+
+          <!-- 3. Size & Color Spec -->
           <div style="font-size: ${config.specFontSize}; color: #222222; font-weight: 600; line-height: 1; margin: 1px auto 0 auto; text-align: center;">
             ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color ? ` • ${variant.color}` : ''}
           </div>
-          <div style="margin: 1px auto; width: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden;">
+
+          <!-- 4. Barcode SVG (Center) -->
+          <div style="margin: 2px auto 1px auto; width: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden;">
             ${svgHtml}
           </div>
+
+          <!-- 5. Price Tag (Bottom) -->
           ${showPrice ? `
-            <div style="border-top: 1px dashed #333333; width: 95%; padding-top: 1px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="border-top: 1px dashed #333333; width: 95%; padding-top: 2px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;">
               ${hasDiscount ? `
                 <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px;">
                   <span style="font-size: ${config.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
@@ -216,7 +216,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               height: ${height} !important;
               max-width: ${width} !important;
               max-height: ${height} !important;
-              padding: 1.2mm 1.5mm !important;
+              padding: 1.5mm 1.5mm !important;
               margin: 0 auto !important;
               display: flex !important;
               flex-direction: column !important;
@@ -276,7 +276,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       {/* Modal Container */}
       <div className="card" style={{
         width: '100%',
-        maxWidth: '680px',
+        maxWidth: '720px',
         maxHeight: '94vh',
         display: 'flex',
         flexDirection: 'column',
@@ -316,7 +316,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
           marginBottom: '10px',
           border: '1px solid var(--border-color)'
         }}>
-          <div style={{ width: '65px' }}>
+          <div style={{ width: '60px' }}>
             <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Copies</label>
             <input 
               type="number" 
@@ -329,7 +329,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             />
           </div>
 
-          <div style={{ minWidth: '160px', flex: '1 1 160px' }}>
+          <div style={{ minWidth: '175px', flex: '1 1 175px' }}>
             <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Sticker Size</label>
             <select 
               className="form-control"
@@ -337,14 +337,29 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               onChange={e => setLabelSize(e.target.value as LabelSizeType)}
               style={{ height: '32px', fontSize: '12px', padding: '4px 8px' }}
             >
-              <option value="thermal-45-35">45mm x 35mm (Standard Tag)</option>
+              <option value="thermal-35-45-portrait">35mm x 45mm (Portrait — Top to Bottom)</option>
+              <option value="thermal-45-35-landscape">45mm x 35mm (Landscape — Wide)</option>
               <option value="thermal-50-30">50mm x 30mm (Wide Sticker)</option>
               <option value="thermal-38-25">38mm x 25mm (Compact)</option>
               <option value="compact">Jewelry / Mini Tag (30mm x 20mm)</option>
             </select>
           </div>
 
-          <div style={{ minWidth: '120px', flex: '1 1 120px' }}>
+          <div style={{ minWidth: '150px', flex: '1 1 150px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Print Direction</label>
+            <select
+              className="form-control"
+              value={orientation}
+              onChange={e => setOrientation(e.target.value as OrientationType)}
+              style={{ height: '32px', fontSize: '12px', padding: '4px 8px' }}
+            >
+              <option value="portrait">⬇️ Top to Bottom (Portrait)</option>
+              <option value="landscape">➡️ Left to Right (Landscape)</option>
+              <option value="rotated-90">🔄 Rotated 90° (Vertical Feed)</option>
+            </select>
+          </div>
+
+          <div style={{ minWidth: '110px', flex: '1 1 110px' }}>
             <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Store Header</label>
             <input 
               type="text" 
@@ -376,13 +391,13 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               onChange={e => {
                 setHasDiscount(e.target.checked);
                 if (e.target.checked && discountPrice === variant.selling_price) {
-                  setDiscountPrice(Math.round(variant.selling_price * 0.9)); // default 10% off
+                  setDiscountPrice(Math.round(variant.selling_price * 0.9));
                 }
               }}
               style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#e11d48' }}
             />
             <label htmlFor="has-discount-chk" style={{ fontSize: '12px', fontWeight: 700, color: '#e11d48', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              🔥 Discount / Sale Tag
+              🔥 Sale Tag
             </label>
           </div>
 
@@ -433,14 +448,14 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         }}>
           <Info size={14} style={{ flexShrink: 0, color: '#3b82f6' }} />
           <span>
-            <strong>Thermal Printer Settings:</strong> In the browser print dialog, set <strong>Margins: None</strong> and select <strong>Paper size: {config.printWidth} x {config.printHeight}</strong> (or User Defined {config.printWidth}).
+            <strong>Top-to-Bottom Printing:</strong> Size set to <strong>{config.printWidth} x {config.printHeight}</strong> ({orientation === 'portrait' ? 'Vertical Portrait' : orientation === 'rotated-90' ? '90° Rotated' : 'Landscape'}). In print dialog, set <strong>Margins: None</strong>.
           </span>
         </div>
 
         {/* Live Printable Preview Area */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Live Sticker Preview ({copies} {copies === 1 ? 'Label' : 'Labels'} — {labelSize === 'thermal-45-35' ? '45mm x 35mm' : labelSize === 'thermal-50-30' ? '50mm x 30mm' : labelSize === 'thermal-38-25' ? '38mm x 25mm' : 'Compact Mini Tag'})
+            Live Sticker Preview ({copies} {copies === 1 ? 'Label' : 'Labels'} — {labelSize === 'thermal-35-45-portrait' ? '35mm x 45mm (Top to Bottom)' : labelSize === 'thermal-45-35-landscape' ? '45mm x 35mm' : labelSize === 'thermal-50-30' ? '50mm x 30mm' : labelSize === 'thermal-38-25' ? '38mm x 25mm' : 'Compact Mini Tag'})
           </div>
 
           {/* Printable Labels Grid */}
@@ -456,6 +471,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 className="barcode-sticker"
                 style={{
                   width: config.cardWidth,
+                  minHeight: config.cardHeight,
                   backgroundColor: '#ffffff',
                   border: '1px dashed #cbd5e1',
                   borderRadius: '6px',
@@ -466,10 +482,11 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  transform: config.isRotated ? 'rotate(-90deg)' : 'none'
                 }}
               >
-                {/* Store Name */}
+                {/* 1. Store Name (Top) */}
                 <div style={{
                   fontFamily: "'Outfit', sans-serif",
                   fontSize: config.storeFontSize,
@@ -493,12 +510,12 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   Elegance — Mens Wear
                 </div>
 
-                {/* Product Name */}
+                {/* 2. Product Name */}
                 <div style={{
                   fontSize: config.prodFontSize,
                   fontWeight: 700,
                   color: '#1e293b',
-                  marginTop: '1px',
+                  marginTop: '2px',
                   maxWidth: '100%',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
@@ -508,7 +525,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   {productName}
                 </div>
 
-                {/* Variant Specs */}
+                {/* 3. Variant Specs */}
                 <div style={{
                   fontSize: config.specFontSize,
                   color: '#64748b',
@@ -519,12 +536,12 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   {variant.size && `Size: ${variant.size}`} {variant.color && ` • ${variant.color}`}
                 </div>
 
-                {/* High Quality SVG Barcode */}
-                <div style={{ margin: '1px 0', maxWidth: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}>
+                {/* 4. High Quality SVG Barcode */}
+                <div style={{ margin: '2px 0 1px 0', maxWidth: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}>
                   <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '100%', height: 'auto' }} />
                 </div>
 
-                {/* Price Tag with Optional Discount */}
+                {/* 5. Price Tag (Bottom) */}
                 {showPrice && (
                   <div style={{
                     borderTop: '1px dashed #e2e8f0',
@@ -592,7 +609,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         {/* Modal Footer Controls */}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            🖨️ Calibrated for single-label thermal roll printing ({config.printWidth} x {config.printHeight}).
+            🖨️ Top-to-bottom layout ({config.printWidth} x {config.printHeight}).
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
