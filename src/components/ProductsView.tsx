@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
+import { useNotificationStore } from '../store';
 import { Plus, Trash2, Tag, Printer, Search } from 'lucide-react';
+import { BarcodeLabelModal } from './BarcodeLabelModal';
 import { Pagination } from './Pagination';
 
 interface ProductsViewProps {
