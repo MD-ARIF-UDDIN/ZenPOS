@@ -40,6 +40,29 @@ const getNextSerialForBundle = (
   return maxSerial + 1;
 };
 
+const GENTS_CATEGORIES: string[] = [
+  'T-Shirt',
+  'Polo Shirt',
+  'Casual Shirt',
+  'Formal Shirt',
+  'Panjabi / Kurta',
+  'Sherwani',
+  'Jeans Pant',
+  'Gabardine / Chino Pant',
+  'Formal Pant / Trouser',
+  'Cargo Pant',
+  'Joggers / Track Pant',
+  'Shorts',
+  'Hoodie / Sweatshirt',
+  'Jacket / Blazer',
+  'Sweater',
+  'Pajama / Lungi',
+  'Underwear / Innerwear',
+  'Belt & Wallet',
+  'Shoes / Footwear',
+  'Cap / Accessories'
+];
+
 interface ColorOption {
   name: string;
   hex: string;
@@ -472,6 +495,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productFormName, setProductFormName] = useState('');
   const [productFormCategory, setProductFormCategory] = useState('');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [productFormBrand, setProductFormBrand] = useState('');
   const [productFormDesc, setProductFormDesc] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
@@ -520,6 +545,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     setEditingProduct(null);
     setProductFormName('');
     setProductFormCategory('');
+    setIsCustomCategory(false);
+    setCustomCategoryInput('');
     setProductFormBrand('');
     setProductFormDesc('');
     setShowProductModal(true);
@@ -528,7 +555,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const handleOpenEditProduct = (prod: Product) => {
     setEditingProduct(prod);
     setProductFormName(prod.name);
-    setProductFormCategory(prod.category || '');
+    const cat = prod.category || '';
+    setProductFormCategory(cat);
+    const isPreset = GENTS_CATEGORIES.includes(cat);
+    if (cat && !isPreset) {
+      setIsCustomCategory(true);
+      setCustomCategoryInput(cat);
+    } else {
+      setIsCustomCategory(false);
+      setCustomCategoryInput('');
+    }
     setProductFormBrand(prod.brand || '');
     setProductFormDesc(prod.description || '');
     setShowProductModal(true);
@@ -538,13 +574,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     e.preventDefault();
     if (!productFormName.trim()) return;
 
+    const finalCategory = (isCustomCategory ? customCategoryInput : productFormCategory).trim();
+
     try {
       setSavingProduct(true);
       showToast(editingProduct ? 'Updating product...' : 'Creating product...', 'info');
       const prod = await dbService.saveProduct({
         ...(editingProduct ? { id: editingProduct.id } : {}),
         name: productFormName.trim(),
-        category: productFormCategory.trim(),
+        category: finalCategory,
         brand: productFormBrand.trim(),
         description: productFormDesc.trim()
       });
@@ -552,6 +590,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       setEditingProduct(null);
       setProductFormName('');
       setProductFormCategory('');
+      setIsCustomCategory(false);
+      setCustomCategoryInput('');
       setProductFormBrand('');
       setProductFormDesc('');
       await loadData();
@@ -1310,10 +1350,44 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                 <label className="form-label" style={{ fontWeight: 600 }}>Product Name *</label>
                 <input type="text" className="form-control" value={productFormName} onChange={e => setProductFormName(e.target.value)} required placeholder="e.g. Slim Denim Jeans" style={{ height: '38px', fontSize: '13px' }} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-group">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'start' }}>
+                <div className="form-group" style={{ display: 'flex', flexDirection: 'column' }}>
                   <label className="form-label" style={{ fontWeight: 600 }}>Category</label>
-                  <input type="text" className="form-control" value={productFormCategory} onChange={e => setProductFormCategory(e.target.value)} placeholder="e.g. Pants" style={{ height: '38px', fontSize: '13px' }} />
+                  <select
+                    className="form-control"
+                    value={isCustomCategory ? '__CUSTOM__' : (productFormCategory || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__CUSTOM__') {
+                        setIsCustomCategory(true);
+                        setProductFormCategory(customCategoryInput);
+                      } else {
+                        setIsCustomCategory(false);
+                        setProductFormCategory(val);
+                      }
+                    }}
+                    style={{ height: '38px', fontSize: '13px' }}
+                  >
+                    <option value="">-- Select Category --</option>
+                    {GENTS_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="__CUSTOM__">✏️ Other / Custom Category...</option>
+                  </select>
+                  {isCustomCategory && (
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={customCategoryInput}
+                      onChange={(e) => {
+                        setCustomCategoryInput(e.target.value);
+                        setProductFormCategory(e.target.value);
+                      }}
+                      placeholder="Type custom category name..."
+                      autoFocus
+                      style={{ height: '36px', fontSize: '13px', marginTop: '6px' }}
+                    />
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 600 }}>Brand</label>
