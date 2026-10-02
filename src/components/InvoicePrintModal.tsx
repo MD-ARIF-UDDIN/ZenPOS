@@ -31,8 +31,8 @@ export interface InvoiceData {
 
 export interface InvoicePrintSettings {
   paperWidth: number; // physical paper width in mm, default 58
-  leftIndent: number; // in mm, default 4.5 (pushes content to the right without clipping)
-  rightInset: number; // in mm, default 3.5 (guarantees right edge text is NEVER cut off)
+  leftIndent: number; // in mm, default 8.5 (pushes content further right)
+  rightInset: number; // in mm, default 1.5 (right buffer so nothing cuts off)
   verticalOffset: number; // in mm, e.g. 0
   fontScale: number; // in %, e.g. 125 (large clear text)
   itemSpacing: number; // in mm, e.g. 0.6
@@ -50,15 +50,15 @@ export interface InvoicePrintSettings {
 
 const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   paperWidth: 58,
-  leftIndent: 4.5, // Shifted to right
-  rightInset: 3.5, // 3.5mm right buffer so nothing is ever cut off on the right
+  leftIndent: 8.5, // Shifted much further to right
+  rightInset: 1.5, // 1.5mm safe right buffer
   verticalOffset: 0,
   fontScale: 125,
   itemSpacing: 0.6,
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
   storeSubtitle: 'Elegance — Mens Wear',
-  storeAddress: '',
+  storeAddress: 'Laxmi Square - 2nd Floor, Jaldi, Banskhali',
   storePhone: '',
   showInvoiceDetails: true,
   showCustomerPhone: true,
@@ -69,7 +69,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
-    const raw = localStorage.getItem('pos_invoice_print_settings_58mm_v7');
+    const raw = localStorage.getItem('pos_invoice_print_settings_58mm_v8');
     if (raw) {
       return { ...DEFAULT_INVOICE_SETTINGS, ...JSON.parse(raw) };
     }
@@ -93,22 +93,22 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
   const updateSettings = (partial: Partial<InvoicePrintSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
-      localStorage.setItem('pos_invoice_print_settings_58mm_v7', JSON.stringify(next));
+      localStorage.setItem('pos_invoice_print_settings_58mm_v8', JSON.stringify(next));
       return next;
     });
   };
 
   const resetSettings = () => {
     setSettings(DEFAULT_INVOICE_SETTINGS);
-    localStorage.setItem('pos_invoice_print_settings_58mm_v7', JSON.stringify(DEFAULT_INVOICE_SETTINGS));
+    localStorage.setItem('pos_invoice_print_settings_58mm_v8', JSON.stringify(DEFAULT_INVOICE_SETTINGS));
   };
 
   const scale = (settings.fontScale || 125) / 100;
   const baseFontSize = 13 * scale;
   const titleFontSize = 17.5 * scale;
   const totalFontSize = 16.5 * scale;
-  const leftIndent = settings.leftIndent !== undefined ? settings.leftIndent : 4.5;
-  const rightInset = settings.rightInset !== undefined ? settings.rightInset : 3.5;
+  const leftIndent = settings.leftIndent !== undefined ? settings.leftIndent : 8.5;
+  const rightInset = settings.rightInset !== undefined ? settings.rightInset : 1.5;
   const vOffset = settings.verticalOffset || 0;
 
   const handlePrint = () => {
@@ -549,20 +549,20 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                       <input 
                         type="range" 
                         min="0" 
-                        max="16" 
+                        max="25" 
                         step="0.5" 
                         value={leftIndent} 
                         onChange={e => updateSettings({ leftIndent: parseFloat(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ leftIndent: Math.min(16, leftIndent + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▶</button>
+                      <button type="button" onClick={() => updateSettings({ leftIndent: Math.min(25, leftIndent + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▶</button>
                     </div>
                   </div>
 
                   {/* 2. Right Safety Inset (Anti-Cut Protection) */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Right Safe Margin:</span>
+                      <span>Right Margin:</span>
                       <span style={{ color: '#2563eb' }}>{rightInset} mm</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -690,7 +690,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     type="text"
                     value={settings.storeAddress}
                     onChange={e => updateSettings({ storeAddress: e.target.value })}
-                    placeholder="e.g. Mirpur-10, Dhaka"
+                    placeholder="e.g. Laxmi Square - 2nd Floor, Jaldi, Banskhali"
                     style={{ width: '100%', padding: '4px 8px', fontSize: '11px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
                   />
                 </div>
