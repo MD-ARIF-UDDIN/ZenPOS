@@ -224,16 +224,18 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               margin: 0 !important;
               padding: 0 !important;
               width: 35mm !important;
-              height: 45mm !important;
+              min-height: 45mm !important;
+              height: auto !important;
               background: #ffffff !important;
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
               text-align: center !important;
-              overflow: hidden !important;
+              overflow: visible !important;
             }
             .print-wrapper {
               width: 35mm !important;
               margin: 0 !important;
               padding: 0 !important;
+              overflow: visible !important;
             }
             .print-label {
               display: block !important;
@@ -1015,16 +1017,18 @@ export const printVariantsBatchLabels = (
             margin: 0 !important;
             padding: 0 !important;
             width: 35mm !important;
-            height: 45mm !important;
+            min-height: 45mm !important;
+            height: auto !important;
             background: #ffffff !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
             text-align: center !important;
-            overflow: hidden !important;
+            overflow: visible !important;
           }
           .print-wrapper {
             width: 35mm !important;
             margin: 0 !important;
             padding: 0 !important;
+            overflow: visible !important;
           }
           .print-label {
             display: block !important;
