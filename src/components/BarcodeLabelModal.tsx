@@ -10,22 +10,50 @@ interface BarcodeLabelModalProps {
 }
 
 // Calibrated printer configuration for 35mm x 45mm vertical thermal stickers
-const CONFIG = {
+const BASE_CONFIG = {
   printWidth: '35mm',
   printHeight: '45mm',
-  cardWidth: '170px',
-  cardHeight: '220px',
-  cardPadding: '8px 6px',
-  storeFontSize: '11px',
-  subFontSize: '7px',
-  prodFontSize: '9.5px',
-  skuFontSize: '8.5px',
-  specFontSize: '8.5px',
-  priceFontSize: '13.5px',
-  offerFontSize: '14px',
+  cardWidth: '175px',
+  cardHeight: '225px',
+  storeFontSize: 11,
+  subFontSize: 6.8,
+  prodFontSize: 9.5,
+  skuFontSize: 8.5,
+  specFontSize: 8.5,
+  priceFontSize: 13,
+  offerFontSize: 14,
   barcodeWidth: 1.1,
-  barcodeHeight: 32,
   barcodeFontSize: 9
+};
+
+export interface BarcodeTuningSettings {
+  verticalOffset: number; // in mm, e.g. -2
+  elementGap: number; // in mm, e.g. 0.8
+  barcodeHeight: number; // in px, e.g. 24
+  bottomSafeMargin: number; // in mm, e.g. 4
+  fontScale: number; // e.g. 100 (%)
+  layoutMode: 'center' | 'top' | 'space-between';
+}
+
+const DEFAULT_SETTINGS: BarcodeTuningSettings = {
+  verticalOffset: -2, // Lift slightly by default so price is never near the bottom cut-off
+  elementGap: 0.8,    // Tightly grouped text lines with no awkward gaps
+  barcodeHeight: 24,  // Clean, scannable, compact barcode
+  bottomSafeMargin: 4,// 4mm safe margin from the bottom tear edge
+  fontScale: 100,
+  layoutMode: 'center'
+};
+
+const getSavedSettings = (): BarcodeTuningSettings => {
+  try {
+    const raw = localStorage.getItem('pos_barcode_tuning_settings');
+    if (raw) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    }
+  } catch (e) {
+    console.error('Failed to parse saved settings', e);
+  }
+  return DEFAULT_SETTINGS;
 };
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
@@ -35,18 +63,27 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
   const [discountPrice, setDiscountPrice] = useState<number>(variant.selling_price);
   const [promoBadge, setPromoBadge] = useState<string>('SPECIAL OFFER');
-  const [verticalOffset, setVerticalOffset] = useState<number>(() => {
-    const saved = localStorage.getItem('pos_barcode_vertical_offset');
-    return saved !== null ? parseFloat(saved) : 0;
-  });
+  
+  // Interactive tuning controls state
+  const [settings, setSettings] = useState<BarcodeTuningSettings>(getSavedSettings);
+  const [showTuningPanel, setShowTuningPanel] = useState<boolean>(true);
+
   const barcodeRefs = useRef<(SVGSVGElement | null)[]>([]);
 
-  const handleOffsetChange = (newVal: number) => {
-    const clamped = Math.max(-6, Math.min(6, newVal));
-    setVerticalOffset(clamped);
-    localStorage.setItem('pos_barcode_vertical_offset', String(clamped));
+  const updateSettings = (partial: Partial<BarcodeTuningSettings>) => {
+    setSettings(prev => {
+      const next = { ...prev, ...partial };
+      localStorage.setItem('pos_barcode_tuning_settings', JSON.stringify(next));
+      return next;
+    });
   };
 
+  const resetSettings = () => {
+    setSettings(DEFAULT_SETTINGS);
+    localStorage.setItem('pos_barcode_tuning_settings', JSON.stringify(DEFAULT_SETTINGS));
+  };
+
+  // Generate Barcode SVG
   useEffect(() => {
     barcodeRefs.current.forEach((svgEl) => {
       const cleanBc = (variant.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
@@ -54,10 +91,10 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         try {
           JsBarcode(svgEl, cleanBc, {
             format: 'CODE128',
-            width: CONFIG.barcodeWidth,
-            height: CONFIG.barcodeHeight,
+            width: BASE_CONFIG.barcodeWidth,
+            height: settings.barcodeHeight,
             displayValue: true,
-            fontSize: CONFIG.barcodeFontSize,
+            fontSize: BASE_CONFIG.barcodeFontSize,
             font: 'sans-serif',
             fontOptions: 'bold',
             margin: 0,
@@ -68,7 +105,9 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         }
       }
     });
-  }, [variant.barcode, copies, hasDiscount]);
+  }, [variant.barcode, copies, hasDiscount, settings.barcodeHeight]);
+
+  const scale = settings.fontScale / 100;
 
   const handlePrint = () => {
     let iframe = document.getElementById('barcode-isolated-print-frame') as HTMLIFrameElement;
@@ -97,10 +136,10 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         const itemSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         JsBarcode(itemSvg, cleanBc, {
           format: 'CODE128',
-          width: CONFIG.barcodeWidth,
-          height: CONFIG.barcodeHeight,
+          width: BASE_CONFIG.barcodeWidth,
+          height: settings.barcodeHeight,
           displayValue: true,
-          fontSize: CONFIG.barcodeFontSize,
+          fontSize: BASE_CONFIG.barcodeFontSize,
           font: 'sans-serif',
           fontOptions: 'bold',
           margin: 0,
@@ -113,47 +152,49 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
     }
 
     const stickerItemsHtml = Array.from({ length: copies }).map(() => `
-      <div class="print-label" style="${verticalOffset !== 0 ? `transform: translateY(${verticalOffset}mm);` : ''}">
-        <!-- 1. Store Header (Top) -->
-        <div class="print-header">
-          <div class="store-title">${storeName}</div>
-          <div class="store-sub">Elegance — Mens Wear</div>
-        </div>
-
-        <!-- 2. Product Name & Specs -->
-        <div class="product-info">
-          <div class="product-title">${productName}</div>
-          ${variant.sku ? `<div class="product-sku">${variant.sku}</div>` : ''}
-          <div class="product-spec">
-            ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
+      <div class="print-label">
+        <div class="print-container" style="transform: translateY(${settings.verticalOffset}mm); gap: ${settings.elementGap}mm; padding-bottom: ${settings.bottomSafeMargin}mm; justify-content: ${settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between'};">
+          <!-- 1. Store Header -->
+          <div class="print-header" style="gap: ${Math.max(0.2, settings.elementGap * 0.4)}mm;">
+            <div class="store-title" style="font-size: ${(BASE_CONFIG.storeFontSize * scale).toFixed(1)}px;">${storeName}</div>
+            <div class="store-sub" style="font-size: ${(BASE_CONFIG.subFontSize * scale).toFixed(1)}px;">Elegance — Mens Wear</div>
           </div>
-        </div>
 
-        <!-- 3. Barcode SVG (Center) -->
-        <div class="barcode-box">
-          ${svgHtml}
-        </div>
-
-        <!-- 4. Price Tag (Bottom) -->
-        ${showPrice ? `
-          <div class="price-box">
-            ${hasDiscount ? `
-              <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
-                <span style="font-size: ${CONFIG.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
-                  ৳${variant.selling_price.toFixed(0)}
-                </span>
-                <span style="font-size: ${CONFIG.offerFontSize}; font-weight: 900; color: #000000;">
-                  ৳${discountPrice.toFixed(0)}
-                </span>
-              </div>
-              ${promoBadge ? `<div style="font-size: ${CONFIG.subFontSize}; font-weight: 800; border: 1px solid #000; padding: 0 2px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 0.3mm;">${promoBadge}</div>` : ''}
-            ` : `
-              <div class="price-mrp">
-                MRP: ৳${variant.selling_price.toFixed(2)}
-              </div>
-            `}
+          <!-- 2. Product Name & Specs -->
+          <div class="product-info" style="gap: ${Math.max(0.2, settings.elementGap * 0.4)}mm;">
+            <div class="product-title" style="font-size: ${(BASE_CONFIG.prodFontSize * scale).toFixed(1)}px;">${productName}</div>
+            ${variant.sku ? `<div class="product-sku" style="font-size: ${(BASE_CONFIG.skuFontSize * scale).toFixed(1)}px;">${variant.sku}</div>` : ''}
+            <div class="product-spec" style="font-size: ${(BASE_CONFIG.specFontSize * scale).toFixed(1)}px;">
+              ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
+            </div>
           </div>
-        ` : ''}
+
+          <!-- 3. Barcode SVG -->
+          <div class="barcode-box">
+            ${svgHtml}
+          </div>
+
+          <!-- 4. Price Tag (Safe distance from bottom) -->
+          ${showPrice ? `
+            <div class="price-box">
+              ${hasDiscount ? `
+                <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
+                  <span style="font-size: ${(BASE_CONFIG.specFontSize * scale).toFixed(1)}px; font-weight: 700; color: #555555; text-decoration: line-through;">
+                    ৳${variant.selling_price.toFixed(0)}
+                  </span>
+                  <span style="font-size: ${(BASE_CONFIG.offerFontSize * scale).toFixed(1)}px; font-weight: 900; color: #000000;">
+                    ৳${discountPrice.toFixed(0)}
+                  </span>
+                </div>
+                ${promoBadge ? `<div style="font-size: ${(BASE_CONFIG.subFontSize * scale).toFixed(1)}px; font-weight: 800; border: 1px solid #000; padding: 0 2px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 0.2mm;">${promoBadge}</div>` : ''}
+              ` : `
+                <div class="price-mrp" style="font-size: ${(BASE_CONFIG.priceFontSize * scale).toFixed(1)}px;">
+                  MRP: ৳${variant.selling_price.toFixed(2)}
+                </div>
+              `}
+            </div>
+          ` : ''}
+        </div>
       </div>
     `).join('');
 
@@ -189,16 +230,13 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               padding: 0 !important;
             }
             .print-label {
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              align-items: center !important;
+              display: block !important;
               width: 35mm !important;
               height: 44.5mm !important;
               max-width: 35mm !important;
               max-height: 44.5mm !important;
               margin: 0 auto !important;
-              padding: 2.2mm 1.5mm 1.8mm 1.5mm !important;
+              padding: 1.5mm 1.5mm !important;
               box-sizing: border-box !important;
               page-break-after: always !important;
               break-after: page !important;
@@ -211,6 +249,14 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               page-break-after: auto !important;
               break-after: auto !important;
             }
+            .print-container {
+              width: 100% !important;
+              height: 100% !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              box-sizing: border-box !important;
+            }
             .print-header {
               width: 100% !important;
               display: flex !important;
@@ -220,9 +266,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             }
             .store-title {
               font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif !important;
-              font-size: ${CONFIG.storeFontSize} !important;
               font-weight: 900 !important;
-              letter-spacing: 0.5px !important;
+              letter-spacing: 0.4px !important;
               color: #000000 !important;
               text-transform: uppercase !important;
               line-height: 1.1 !important;
@@ -233,13 +278,11 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               word-break: break-word !important;
             }
             .store-sub {
-              font-size: ${CONFIG.subFontSize} !important;
               font-weight: 700 !important;
-              letter-spacing: 0.3px !important;
+              letter-spacing: 0.2px !important;
               color: #222222 !important;
               text-transform: uppercase !important;
               line-height: 1 !important;
-              margin-top: 0.3mm !important;
               text-align: center !important;
               width: 100% !important;
             }
@@ -249,10 +292,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               flex-direction: column !important;
               align-items: center !important;
               justify-content: center !important;
-              margin-top: 0.4mm !important;
             }
             .product-title {
-              font-size: ${CONFIG.prodFontSize} !important;
               font-weight: 800 !important;
               color: #000000 !important;
               line-height: 1.15 !important;
@@ -266,21 +307,17 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             }
             .product-sku {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
-              font-size: ${CONFIG.skuFontSize} !important;
               font-weight: 800 !important;
               color: #111111 !important;
-              margin-top: 0.3mm !important;
               letter-spacing: 0.3px !important;
               line-height: 1.1 !important;
               text-align: center !important;
               max-width: 32mm !important;
             }
             .product-spec {
-              font-size: ${CONFIG.specFontSize} !important;
               color: #000000 !important;
               font-weight: 800 !important;
               line-height: 1.1 !important;
-              margin-top: 0.3mm !important;
               text-align: center !important;
               max-width: 32mm !important;
             }
@@ -291,14 +328,12 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               justify-content: center !important;
               align-items: center !important;
               text-align: center !important;
-              margin: 0.4mm 0 !important;
               overflow: hidden !important;
             }
             svg {
               width: 92% !important;
               max-width: 31mm !important;
-              height: 13.5mm !important;
-              max-height: 14.5mm !important;
+              height: auto !important;
               display: block !important;
               margin: 0 auto !important;
               text-align: center !important;
@@ -307,14 +342,13 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
               font-weight: 800 !important;
               fill: #000000 !important;
-              letter-spacing: 0.5px !important;
+              letter-spacing: 0.4px !important;
             }
             .price-box {
               width: 100% !important;
               max-width: 32mm !important;
               border-top: 1px dashed #000000 !important;
-              padding-top: 0.8mm !important;
-              margin-top: 0.3mm !important;
+              padding-top: 0.6mm !important;
               display: flex !important;
               flex-direction: column !important;
               align-items: center !important;
@@ -322,7 +356,6 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               text-align: center !important;
             }
             .price-mrp {
-              font-size: ${CONFIG.priceFontSize} !important;
               font-weight: 900 !important;
               color: #000000 !important;
               letter-spacing: 0.3px !important;
@@ -354,8 +387,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(15, 23, 42, 0.65)',
-      backdropFilter: 'blur(4px)',
+      backgroundColor: 'rgba(15, 23, 42, 0.7)',
+      backdropFilter: 'blur(5px)',
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
@@ -365,24 +398,24 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       {/* Modal Container */}
       <div className="card" style={{
         width: '100%',
-        maxWidth: '650px',
-        maxHeight: '94vh',
+        maxWidth: '780px',
+        maxHeight: '95vh',
         display: 'flex',
         flexDirection: 'column',
         borderRadius: 'var(--radius-md)',
-        padding: '18px',
+        padding: '16px',
         backgroundColor: '#ffffff',
-        boxShadow: 'var(--shadow-lg)',
+        boxShadow: 'var(--shadow-xl)',
         overflow: 'hidden'
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eef2f6', paddingBottom: '10px', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eef2f6', paddingBottom: '10px', marginBottom: '10px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
               Print Barcode Sticker
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              {productName} — ({variant.color || 'Default'} / {variant.size || 'Free Size'}) • <strong>35mm × 45mm</strong> (Evenly Distributed)
+              {productName} — ({variant.color || 'Default'} / {variant.size || 'Free Size'}) • <strong>35mm × 45mm</strong>
             </p>
           </div>
           <button 
@@ -393,20 +426,20 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
           </button>
         </div>
 
-        {/* Configuration Bar */}
+        {/* Basic Configuration Toolbar */}
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
           gap: '10px',
           alignItems: 'center',
-          backgroundColor: 'var(--bg-primary)',
-          padding: '10px 14px',
+          backgroundColor: '#f8fafc',
+          padding: '8px 12px',
           borderRadius: 'var(--radius-sm)',
-          marginBottom: '12px',
+          marginBottom: '10px',
           border: '1px solid var(--border-color)'
         }}>
-          <div style={{ width: '70px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Copies</label>
+          <div style={{ width: '65px' }}>
+            <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>Copies</label>
             <input 
               type="number" 
               min="1" 
@@ -414,68 +447,35 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               value={copies} 
               onChange={e => setCopies(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
               className="form-control"
-              style={{ height: '34px', fontSize: '13px', padding: '4px 8px', textAlign: 'center', fontWeight: 700 }}
+              style={{ height: '30px', fontSize: '12px', padding: '2px 6px', textAlign: 'center', fontWeight: 700 }}
             />
           </div>
 
-          <div style={{ flex: '1 1 140px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>Store Header</label>
+          <div style={{ flex: '1 1 120px' }}>
+            <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>Store Header</label>
             <input 
               type="text" 
               value={storeName} 
               onChange={e => setStoreName(e.target.value)}
               className="form-control"
-              style={{ height: '34px', fontSize: '12px', padding: '4px 8px' }}
+              style={{ height: '30px', fontSize: '12px', padding: '2px 8px' }}
             />
           </div>
 
-          {/* Vertical Position Nudge Controls */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>
-              Vertical Align ({verticalOffset > 0 ? `+${verticalOffset}` : verticalOffset}mm)
-            </label>
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <button 
-                type="button" 
-                onClick={() => handleOffsetChange(verticalOffset - 1)}
-                title="Nudge content 1mm higher"
-                style={{ height: '28px', padding: '0 8px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
-              >
-                ▲ Up
-              </button>
-              <button 
-                type="button" 
-                onClick={() => handleOffsetChange(0)}
-                title="Reset to 0mm center"
-                style={{ height: '28px', padding: '0 6px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer' }}
-              >
-                Reset
-              </button>
-              <button 
-                type="button" 
-                onClick={() => handleOffsetChange(verticalOffset + 1)}
-                title="Nudge content 1mm lower"
-                style={{ height: '28px', padding: '0 8px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
-              >
-                ▼ Down
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px' }}>
             <input 
               type="checkbox" 
               id="show-price-chk"
               checked={showPrice} 
               onChange={e => setShowPrice(e.target.checked)}
-              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#0b2545' }}
+              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#0b2545' }}
             />
-            <label htmlFor="show-price-chk" style={{ fontSize: '12px', fontWeight: 600, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <label htmlFor="show-price-chk" style={{ fontSize: '11.5px', fontWeight: 600, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Show Price
             </label>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px' }}>
             <input 
               type="checkbox" 
               id="has-discount-chk"
@@ -486,49 +486,152 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   setDiscountPrice(Math.round(variant.selling_price * 0.9));
                 }
               }}
-              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#e11d48' }}
+              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#e11d48' }}
             />
-            <label htmlFor="has-discount-chk" style={{ fontSize: '12px', fontWeight: 700, color: '#e11d48', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <label htmlFor="has-discount-chk" style={{ fontSize: '11.5px', fontWeight: 700, color: '#e11d48', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               🔥 Sale Tag
             </label>
           </div>
 
-          {/* Conditional Discount Fields */}
-          {hasDiscount && (
-            <div style={{ display: 'flex', gap: '8px', width: '100%', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#e11d48', display: 'block', marginBottom: '2px' }}>
-                  Sale / Offer Price (৳)
-                </label>
+          <button
+            type="button"
+            onClick={() => setShowTuningPanel(!showTuningPanel)}
+            style={{
+              marginLeft: 'auto',
+              marginTop: '10px',
+              padding: '4px 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: showTuningPanel ? '#e0e7ff' : '#ffffff',
+              color: showTuningPanel ? '#3730a3' : '#475569',
+              cursor: 'pointer'
+            }}
+          >
+            ⚙️ {showTuningPanel ? 'Hide Tuning' : 'Adjust Layout'}
+          </button>
+        </div>
+
+        {/* Live Alignment & Spacing Tuning Controls */}
+        {showTuningPanel && (
+          <div style={{
+            backgroundColor: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '6px',
+            padding: '10px 12px',
+            marginBottom: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #dbeafe', paddingBottom: '4px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                🎛️ Live Alignment & Position Adjuster
+              </span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => updateSettings({ verticalOffset: -3, elementGap: 0.6, barcodeHeight: 22, bottomSafeMargin: 5, layoutMode: 'center' })}
+                  style={{ padding: '2px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #93c5fd', backgroundColor: '#ffffff', color: '#1d4ed8', cursor: 'pointer' }}
+                >
+                  ⚡ Safe Compact
+                </button>
+                <button
+                  type="button"
+                  onClick={resetSettings}
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 600, borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#64748b', cursor: 'pointer' }}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+              {/* 1. Vertical Offset */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                  <span>Vertical Shift:</span>
+                  <span style={{ color: '#2563eb' }}>{settings.verticalOffset > 0 ? `+${settings.verticalOffset}` : settings.verticalOffset} mm</span>
+                </div>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <button type="button" onClick={() => updateSettings({ verticalOffset: Math.max(-10, settings.verticalOffset - 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▲</button>
+                  <input 
+                    type="range" 
+                    min="-10" 
+                    max="10" 
+                    step="0.5" 
+                    value={settings.verticalOffset} 
+                    onChange={e => updateSettings({ verticalOffset: parseFloat(e.target.value) })}
+                    style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
+                  />
+                  <button type="button" onClick={() => updateSettings({ verticalOffset: Math.min(10, settings.verticalOffset + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▼</button>
+                </div>
+              </div>
+
+              {/* 2. Item Gap / Spacing */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                  <span>Text & Item Gap:</span>
+                  <span style={{ color: '#2563eb' }}>{settings.elementGap} mm</span>
+                </div>
                 <input 
-                  type="number" 
-                  value={discountPrice} 
-                  onChange={e => setDiscountPrice(Number(e.target.value))}
-                  className="form-control"
-                  style={{ height: '30px', fontSize: '12px', fontWeight: 700, borderColor: '#fda4af' }}
+                  type="range" 
+                  min="0.2" 
+                  max="3.0" 
+                  step="0.2" 
+                  value={settings.elementGap} 
+                  onChange={e => updateSettings({ elementGap: parseFloat(e.target.value) })}
+                  style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }} 
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
-                  Promo Badge Label
-                </label>
+
+              {/* 3. Barcode Height */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                  <span>Barcode Height:</span>
+                  <span style={{ color: '#2563eb' }}>{settings.barcodeHeight} px</span>
+                </div>
                 <input 
-                  type="text" 
-                  value={promoBadge} 
-                  onChange={e => setPromoBadge(e.target.value)}
-                  placeholder="e.g. SALE, 20% OFF, SPECIAL"
-                  className="form-control"
-                  style={{ height: '30px', fontSize: '12px' }}
+                  type="range" 
+                  min="16" 
+                  max="38" 
+                  step="2" 
+                  value={settings.barcodeHeight} 
+                  onChange={e => updateSettings({ barcodeHeight: parseInt(e.target.value) })}
+                  style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }} 
+                />
+              </div>
+
+              {/* 4. Bottom Safety Margin */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                  <span>Bottom Lift (Safety):</span>
+                  <span style={{ color: '#2563eb' }}>{settings.bottomSafeMargin} mm</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="8" 
+                  step="0.5" 
+                  value={settings.bottomSafeMargin} 
+                  onChange={e => updateSettings({ bottomSafeMargin: parseFloat(e.target.value) })}
+                  style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }} 
                 />
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Live Printable Preview Area */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Live Sticker Preview ({copies} {copies === 1 ? 'Label' : 'Labels'} — {CONFIG.printWidth} × {CONFIG.printHeight})
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              Live Sticker Preview ({BASE_CONFIG.printWidth} × {BASE_CONFIG.printHeight})
+            </span>
+            <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>
+              ✓ WYSIWYG (Preview matches print output)
+            </span>
           </div>
 
           {/* Printable Labels Grid */}
@@ -544,14 +647,15 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 className="barcode-sticker"
                 style={{
                   position: 'relative',
-                  width: CONFIG.cardWidth,
-                  height: CONFIG.cardHeight,
+                  width: BASE_CONFIG.cardWidth,
+                  height: BASE_CONFIG.cardHeight,
                   backgroundColor: '#ffffff',
                   border: '1px dashed #cbd5e1',
                   borderRadius: '6px',
                   overflow: 'hidden',
                   textAlign: 'center',
-                  boxShadow: 'var(--shadow-xs)'
+                  boxShadow: 'var(--shadow-xs)',
+                  padding: '6px'
                 }}
               >
                 <div style={{
@@ -560,15 +664,17 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: CONFIG.cardPadding,
+                  justifyContent: settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between',
+                  gap: `${settings.elementGap * 3.2}px`,
+                  transform: `translateY(${settings.verticalOffset * 2.8}px)`,
+                  paddingBottom: `${settings.bottomSafeMargin * 2.8}px`,
                   boxSizing: 'border-box'
                 }}>
                   {/* 1. Store Name (Top) */}
                   <div style={{ width: '100%' }}>
                     <div style={{
                       fontFamily: "'Outfit', sans-serif",
-                      fontSize: CONFIG.storeFontSize,
+                      fontSize: `${BASE_CONFIG.storeFontSize * scale}px`,
                       fontWeight: 900,
                       letterSpacing: '0.4px',
                       color: '#0b2545',
@@ -581,12 +687,12 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                       {storeName}
                     </div>
                     <div style={{
-                      fontSize: CONFIG.subFontSize,
+                      fontSize: `${BASE_CONFIG.subFontSize * scale}px`,
                       fontWeight: 700,
                       letterSpacing: '0.2px',
                       color: '#64748b',
                       textTransform: 'uppercase',
-                      marginTop: '2px',
+                      marginTop: '1px',
                       lineHeight: 1,
                       width: '100%',
                       textAlign: 'center'
@@ -596,9 +702,9 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   </div>
 
                   {/* 2. Product Name & Specs */}
-                  <div style={{ width: '100%', margin: '2px 0' }}>
+                  <div style={{ width: '100%' }}>
                     <div style={{
-                      fontSize: CONFIG.prodFontSize,
+                      fontSize: `${BASE_CONFIG.prodFontSize * scale}px`,
                       fontWeight: 800,
                       color: '#1e293b',
                       width: '100%',
@@ -615,10 +721,10 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
                     {variant.sku && (
                       <div style={{
-                        fontSize: CONFIG.skuFontSize,
+                        fontSize: `${BASE_CONFIG.skuFontSize * scale}px`,
                         fontWeight: 800,
                         color: '#1e293b',
-                        marginTop: '2px',
+                        marginTop: '1px',
                         textAlign: 'center',
                         width: '100%',
                         letterSpacing: '0.3px',
@@ -629,10 +735,10 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                     )}
 
                     <div style={{
-                      fontSize: CONFIG.specFontSize,
+                      fontSize: `${BASE_CONFIG.specFontSize * scale}px`,
                       color: '#0f172a',
                       fontWeight: 800,
-                      marginTop: '2px',
+                      marginTop: '1px',
                       lineHeight: 1.1,
                       width: '100%',
                       textAlign: 'center'
@@ -642,8 +748,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   </div>
 
                   {/* 3. High Quality SVG Barcode */}
-                  <div style={{ margin: '2px auto', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                    <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '92%', maxHeight: '44px', height: 'auto', margin: '0 auto', display: 'block' }} />
+                  <div style={{ margin: '0 auto', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+                    <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '92%', height: 'auto', margin: '0 auto', display: 'block' }} />
                   </div>
 
                   {/* 4. Price Tag (Bottom) */}
@@ -651,8 +757,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                     <div style={{
                       borderTop: '1px dashed #cbd5e1',
                       width: '100%',
-                      paddingTop: '4px',
-                      marginTop: '2px',
+                      paddingTop: '3px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -662,7 +767,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                       {hasDiscount ? (
                         <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', flexWrap: 'wrap', textAlign: 'center' }}>
                           <span style={{
-                            fontSize: CONFIG.specFontSize,
+                            fontSize: `${BASE_CONFIG.specFontSize * scale}px`,
                             fontWeight: 700,
                             color: '#94a3b8',
                             textDecoration: 'line-through'
@@ -670,7 +775,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                             ৳${variant.selling_price.toFixed(0)}
                           </span>
                           <span style={{
-                            fontSize: CONFIG.offerFontSize,
+                            fontSize: `${BASE_CONFIG.offerFontSize * scale}px`,
                             fontWeight: 900,
                             color: '#e11d48'
                           }}>
@@ -679,7 +784,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                         </div>
                       ) : (
                         <div style={{
-                          fontSize: CONFIG.priceFontSize,
+                          fontSize: `${BASE_CONFIG.priceFontSize * scale}px`,
                           fontWeight: 900,
                           color: '#0b2545',
                           letterSpacing: '0.3px',
@@ -693,7 +798,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
                       {hasDiscount && promoBadge && (
                         <div style={{
-                          fontSize: CONFIG.subFontSize,
+                          fontSize: `${BASE_CONFIG.subFontSize * scale}px`,
                           fontWeight: 800,
                           backgroundColor: '#ffe4e6',
                           color: '#e11d48',
@@ -701,7 +806,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                           borderRadius: '2px',
                           letterSpacing: '0.3px',
                           textTransform: 'uppercase',
-                          marginTop: '2px',
+                          marginTop: '1px',
                           lineHeight: 1
                         }}>
                           {promoBadge}
@@ -716,9 +821,9 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         </div>
 
         {/* Modal Footer Controls */}
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            🏷️ Centered Vertical Tag (35mm × 45mm Portrait)
+            🏷️ <strong>35mm × 45mm</strong> Thermal Sticker Label
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
@@ -745,6 +850,9 @@ export const printVariantsBatchLabels = (
   storeName: string = 'RAJMAHAL'
 ) => {
   if (!items || items.length === 0) return;
+
+  const settings = getSavedSettings();
+  const scale = (settings.fontScale || 100) / 100;
 
   let iframe = document.getElementById('barcode-isolated-print-frame') as HTMLIFrameElement;
   if (!iframe) {
@@ -773,10 +881,10 @@ export const printVariantsBatchLabels = (
         const itemSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         JsBarcode(itemSvg, cleanBc, {
           format: 'CODE128',
-          width: CONFIG.barcodeWidth,
-          height: CONFIG.barcodeHeight,
+          width: BASE_CONFIG.barcodeWidth,
+          height: settings.barcodeHeight || 24,
           displayValue: true,
-          fontSize: CONFIG.barcodeFontSize,
+          fontSize: BASE_CONFIG.barcodeFontSize,
           font: 'sans-serif',
           fontOptions: 'bold',
           margin: 0,
@@ -791,30 +899,32 @@ export const printVariantsBatchLabels = (
     const numCopies = Math.max(1, copies);
     return Array.from({ length: numCopies }).map(() => `
       <div class="print-label">
-        <!-- 1. Store Header (Top) -->
-        <div class="print-header">
-          <div class="store-title">${storeName}</div>
-          <div class="store-sub">Elegance — Mens Wear</div>
-        </div>
-
-        <!-- 2. Product Name & Specs -->
-        <div class="product-info">
-          <div class="product-title">${productName}</div>
-          ${variant.sku ? `<div class="product-sku">${variant.sku}</div>` : ''}
-          <div class="product-spec">
-            ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
+        <div class="print-container" style="transform: translateY(${settings.verticalOffset}mm); gap: ${settings.elementGap}mm; padding-bottom: ${settings.bottomSafeMargin}mm; justify-content: ${settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between'};">
+          <!-- 1. Store Header -->
+          <div class="print-header" style="gap: ${Math.max(0.2, settings.elementGap * 0.4)}mm;">
+            <div class="store-title" style="font-size: ${(BASE_CONFIG.storeFontSize * scale).toFixed(1)}px;">${storeName}</div>
+            <div class="store-sub" style="font-size: ${(BASE_CONFIG.subFontSize * scale).toFixed(1)}px;">Elegance — Mens Wear</div>
           </div>
-        </div>
 
-        <!-- 3. Barcode SVG (Center) -->
-        <div class="barcode-box">
-          ${svgHtml}
-        </div>
+          <!-- 2. Product Name & Specs -->
+          <div class="product-info" style="gap: ${Math.max(0.2, settings.elementGap * 0.4)}mm;">
+            <div class="product-title" style="font-size: ${(BASE_CONFIG.prodFontSize * scale).toFixed(1)}px;">${productName}</div>
+            ${variant.sku ? `<div class="product-sku" style="font-size: ${(BASE_CONFIG.skuFontSize * scale).toFixed(1)}px;">${variant.sku}</div>` : ''}
+            <div class="product-spec" style="font-size: ${(BASE_CONFIG.specFontSize * scale).toFixed(1)}px;">
+              ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
+            </div>
+          </div>
 
-        <!-- 4. Price Tag (Bottom) -->
-        <div class="price-box">
-          <div class="price-mrp">
-            MRP: ৳${Number(variant.selling_price).toFixed(2)}
+          <!-- 3. Barcode SVG -->
+          <div class="barcode-box">
+            ${svgHtml}
+          </div>
+
+          <!-- 4. Price Tag (Bottom) -->
+          <div class="price-box">
+            <div class="price-mrp" style="font-size: ${(BASE_CONFIG.priceFontSize * scale).toFixed(1)}px;">
+              MRP: ৳${Number(variant.selling_price).toFixed(2)}
+            </div>
           </div>
         </div>
       </div>
@@ -853,16 +963,13 @@ export const printVariantsBatchLabels = (
             padding: 0 !important;
           }
           .print-label {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            align-items: center !important;
+            display: block !important;
             width: 35mm !important;
             height: 44.5mm !important;
             max-width: 35mm !important;
             max-height: 44.5mm !important;
             margin: 0 auto !important;
-            padding: 2.2mm 1.5mm 1.8mm 1.5mm !important;
+            padding: 1.5mm 1.5mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -875,6 +982,14 @@ export const printVariantsBatchLabels = (
             page-break-after: auto !important;
             break-after: auto !important;
           }
+          .print-container {
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            box-sizing: border-box !important;
+          }
           .print-header {
             width: 100% !important;
             display: flex !important;
@@ -884,9 +999,8 @@ export const printVariantsBatchLabels = (
           }
           .store-title {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif !important;
-            font-size: ${CONFIG.storeFontSize} !important;
             font-weight: 900 !important;
-            letter-spacing: 0.5px !important;
+            letter-spacing: 0.4px !important;
             color: #000000 !important;
             text-transform: uppercase !important;
             line-height: 1.1 !important;
@@ -897,13 +1011,11 @@ export const printVariantsBatchLabels = (
             word-break: break-word !important;
           }
           .store-sub {
-            font-size: ${CONFIG.subFontSize} !important;
             font-weight: 700 !important;
-            letter-spacing: 0.3px !important;
+            letter-spacing: 0.2px !important;
             color: #222222 !important;
             text-transform: uppercase !important;
             line-height: 1 !important;
-            margin-top: 0.3mm !important;
             text-align: center !important;
             width: 100% !important;
           }
@@ -913,10 +1025,8 @@ export const printVariantsBatchLabels = (
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
-            margin-top: 0.4mm !important;
           }
           .product-title {
-            font-size: ${CONFIG.prodFontSize} !important;
             font-weight: 800 !important;
             color: #000000 !important;
             line-height: 1.15 !important;
@@ -930,21 +1040,17 @@ export const printVariantsBatchLabels = (
           }
           .product-sku {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
-            font-size: ${CONFIG.skuFontSize} !important;
             font-weight: 800 !important;
             color: #111111 !important;
-            margin-top: 0.3mm !important;
             letter-spacing: 0.3px !important;
             line-height: 1.1 !important;
             text-align: center !important;
             max-width: 32mm !important;
           }
           .product-spec {
-            font-size: ${CONFIG.specFontSize} !important;
             color: #000000 !important;
             font-weight: 800 !important;
             line-height: 1.1 !important;
-            margin-top: 0.3mm !important;
             text-align: center !important;
             max-width: 32mm !important;
           }
@@ -955,14 +1061,12 @@ export const printVariantsBatchLabels = (
             justify-content: center !important;
             align-items: center !important;
             text-align: center !important;
-            margin: 0.4mm 0 !important;
             overflow: hidden !important;
           }
           svg {
             width: 92% !important;
             max-width: 31mm !important;
-            height: 13.5mm !important;
-            max-height: 14.5mm !important;
+            height: auto !important;
             display: block !important;
             margin: 0 auto !important;
             text-align: center !important;
@@ -971,14 +1075,13 @@ export const printVariantsBatchLabels = (
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
             font-weight: 800 !important;
             fill: #000000 !important;
-            letter-spacing: 0.5px !important;
+            letter-spacing: 0.4px !important;
           }
           .price-box {
             width: 100% !important;
             max-width: 32mm !important;
             border-top: 1px dashed #000000 !important;
-            padding-top: 0.8mm !important;
-            margin-top: 0.3mm !important;
+            padding-top: 0.6mm !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
@@ -986,7 +1089,6 @@ export const printVariantsBatchLabels = (
             text-align: center !important;
           }
           .price-mrp {
-            font-size: ${CONFIG.priceFontSize} !important;
             font-weight: 900 !important;
             color: #000000 !important;
             letter-spacing: 0.3px !important;
@@ -1010,5 +1112,6 @@ export const printVariantsBatchLabels = (
     iframe.contentWindow?.print();
   }, 350);
 };
+
 
 
