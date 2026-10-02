@@ -21,12 +21,13 @@ const CONFIG = {
   storeFontSize: '10.5px',
   subFontSize: '7px',
   prodFontSize: '9px',
+  skuFontSize: '9.5px',
   specFontSize: '10px',
-  priceFontSize: '11px',
-  offerFontSize: '11.5px',
-  barcodeWidth: 1.25,
-  barcodeHeight: 20,
-  barcodeFontSize: 16
+  priceFontSize: '13px',
+  offerFontSize: '13.5px',
+  barcodeWidth: 0.9,
+  barcodeHeight: 12,
+  barcodeFontSize: 8
 };
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
@@ -102,7 +103,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
             <!-- 2b. Product Code / SKU (no label) -->
             ${variant.sku ? `
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif; font-size: 8px; font-weight: 700; color: #222222; margin: 0.5px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.2px;">
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: ${CONFIG.skuFontSize}; font-weight: 800; color: #111111; margin: 0.8px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.3px; line-height: 1.15;">
                 ${variant.sku}
               </div>
             ` : ''}
@@ -162,16 +163,17 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               margin: 0 !important;
               padding: 0 !important;
               width: ${width} !important;
-              height: ${height} !important;
+              height: auto !important;
+              min-height: 100% !important;
               background: #ffffff !important;
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
               text-align: center !important;
-              overflow: hidden !important;
+              overflow: visible !important;
             }
             .print-wrapper {
               display: block !important;
               width: ${width} !important;
-              margin: 0 auto !important;
+              margin: 0 !important;
               padding: 0 !important;
               text-align: center !important;
             }
@@ -181,7 +183,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               height: ${height} !important;
               max-width: ${width} !important;
               max-height: ${height} !important;
-              margin: 0 auto !important;
+              margin: 0 !important;
               padding: 0 !important;
               overflow: hidden !important;
               background: #ffffff !important;
@@ -205,11 +207,11 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               overflow: hidden !important;
             }
             .print-label:last-child {
-              page-break-after: auto !important;
-              break-after: auto !important;
+              page-break-after: avoid !important;
+              break-after: avoid !important;
             }
             svg {
-              max-width: 28.5mm !important;
+              max-width: 23mm !important;
               width: 100% !important;
               height: auto !important;
               display: block !important;
@@ -474,13 +476,14 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   {/* 2b. Product Code / SKU (no label) */}
                   {variant.sku && (
                     <div style={{
-                      fontSize: '8px',
-                      fontWeight: 700,
-                      color: '#475569',
-                      marginTop: '0.5px',
+                      fontSize: CONFIG.skuFontSize,
+                      fontWeight: 800,
+                      color: '#1e293b',
+                      marginTop: '0.8px',
                       textAlign: 'center',
                       width: '100%',
-                      letterSpacing: '0.2px'
+                      letterSpacing: '0.3px',
+                      lineHeight: 1.15
                     }}>
                       {variant.sku}
                     </div>
@@ -501,7 +504,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
                   {/* 4. High Quality SVG Barcode */}
                   <div style={{ margin: '1.5px auto', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                    <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '100%', height: 'auto', margin: '0 auto', display: 'block' }} />
+                    <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '85%', height: 'auto', margin: '0 auto', display: 'block' }} />
                   </div>
 
                   {/* 5. Price Tag (Bottom) */}
@@ -623,15 +626,13 @@ export const printVariantsBatchLabels = (
   const width = CONFIG.printWidth;
   const height = CONFIG.printHeight;
 
-  // Temporary SVG container to render barcodes
-  const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-
   const stickerItemsHtml = items.flatMap(({ variant, productName, copies = 1 }) => {
     let svgHtml = '';
     const cleanBc = (variant.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
     if (cleanBc) {
       try {
-        JsBarcode(tempSvg, cleanBc, {
+        const itemSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(itemSvg, cleanBc, {
           format: 'CODE128',
           width: CONFIG.barcodeWidth,
           height: CONFIG.barcodeHeight,
@@ -642,7 +643,7 @@ export const printVariantsBatchLabels = (
           margin: 0,
           textMargin: 2
         });
-        svgHtml = tempSvg.outerHTML;
+        svgHtml = itemSvg.outerHTML;
       } catch (e) {
         console.error('Failed to generate barcode SVG for batch print', e);
       }
@@ -667,7 +668,7 @@ export const printVariantsBatchLabels = (
 
           <!-- 2b. Product Code / SKU (no label) -->
           ${variant.sku ? `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif; font-size: 8px; font-weight: 700; color: #222222; margin: 0.5px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.2px;">
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: ${CONFIG.skuFontSize}; font-weight: 800; color: #111111; margin: 0.8px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.3px; line-height: 1.15;">
               ${variant.sku}
             </div>
           ` : ''}
@@ -713,16 +714,17 @@ export const printVariantsBatchLabels = (
             margin: 0 !important;
             padding: 0 !important;
             width: ${width} !important;
-            height: ${height} !important;
+            height: auto !important;
+            min-height: 100% !important;
             background: #ffffff !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
             text-align: center !important;
-            overflow: hidden !important;
+            overflow: visible !important;
           }
           .print-wrapper {
             display: block !important;
             width: ${width} !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             padding: 0 !important;
             text-align: center !important;
           }
@@ -732,7 +734,7 @@ export const printVariantsBatchLabels = (
             height: ${height} !important;
             max-width: ${width} !important;
             max-height: ${height} !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             padding: 0 !important;
             overflow: hidden !important;
             background: #ffffff !important;
@@ -756,11 +758,11 @@ export const printVariantsBatchLabels = (
             overflow: hidden !important;
           }
           .print-label:last-child {
-            page-break-after: auto !important;
-            break-after: auto !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
           svg {
-            max-width: 28.5mm !important;
+            max-width: 23mm !important;
             width: 100% !important;
             height: auto !important;
             display: block !important;
@@ -787,6 +789,6 @@ export const printVariantsBatchLabels = (
   setTimeout(() => {
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
-  }, 250);
+  }, 350);
 };
 
