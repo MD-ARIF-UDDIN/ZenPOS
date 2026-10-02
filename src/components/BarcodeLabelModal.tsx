@@ -28,6 +28,7 @@ const BASE_CONFIG = {
 
 export interface BarcodeTuningSettings {
   verticalOffset: number; // in mm, e.g. -2
+  horizontalOffset: number; // in mm, e.g. 0 (positive = right, negative = left)
   elementGap: number; // in mm, e.g. 0.8
   barcodeHeight: number; // in px, e.g. 24
   bottomSafeMargin: number; // in mm, e.g. 4
@@ -37,6 +38,7 @@ export interface BarcodeTuningSettings {
 
 const DEFAULT_SETTINGS: BarcodeTuningSettings = {
   verticalOffset: -2, // Lift slightly by default so price is never near the bottom cut-off
+  horizontalOffset: 0,// 0mm default horizontal center
   elementGap: 0.8,    // Tightly grouped text lines with no awkward gaps
   barcodeHeight: 24,  // Clean, scannable, compact barcode
   bottomSafeMargin: 4,// 4mm safe margin from the bottom tear edge
@@ -151,9 +153,13 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       }
     }
 
+    const hOffset = settings.horizontalOffset || 0;
+    const vOffset = settings.verticalOffset || 0;
+
     const stickerItemsHtml = Array.from({ length: copies }).map(() => `
       <div class="print-label">
-        <div class="print-container" style="transform: translateY(${settings.verticalOffset}mm); gap: ${settings.elementGap}mm; padding-bottom: ${settings.bottomSafeMargin}mm; justify-content: ${settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between'};">
+        <div class="print-container" style="transform: translate(${hOffset}mm, ${vOffset}mm); gap: ${settings.elementGap}mm; padding-bottom: ${settings.bottomSafeMargin}mm; justify-content: ${settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between'};">
+
           <!-- 1. Store Header -->
           <div class="print-header" style="gap: ${Math.max(0.2, settings.elementGap * 0.4)}mm;">
             <div class="store-title" style="font-size: ${(BASE_CONFIG.storeFontSize * scale).toFixed(1)}px;">${storeName}</div>
@@ -564,7 +570,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   type="button"
-                  onClick={() => updateSettings({ verticalOffset: -3, elementGap: 0.6, barcodeHeight: 22, bottomSafeMargin: 5, layoutMode: 'center' })}
+                  onClick={() => updateSettings({ verticalOffset: -3, horizontalOffset: 1, elementGap: 0.6, barcodeHeight: 22, bottomSafeMargin: 5, layoutMode: 'center' })}
                   style={{ padding: '2px 8px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', border: '1px solid #93c5fd', backgroundColor: '#ffffff', color: '#1d4ed8', cursor: 'pointer' }}
                 >
                   ⚡ Safe Compact
@@ -579,15 +585,38 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-              {/* 1. Vertical Offset */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '10px' }}>
+              {/* 1. Horizontal Offset (Left / Right) */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                  <span>Horizontal (L/R):</span>
+                  <span style={{ color: '#2563eb' }}>
+                    {(settings.horizontalOffset || 0) > 0 ? `+${settings.horizontalOffset}mm (Right)` : (settings.horizontalOffset || 0) < 0 ? `${settings.horizontalOffset}mm (Left)` : '0mm (Center)'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <button type="button" onClick={() => updateSettings({ horizontalOffset: Math.max(-8, (settings.horizontalOffset || 0) - 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Left">◀</button>
+                  <input 
+                    type="range" 
+                    min="-8" 
+                    max="8" 
+                    step="0.5" 
+                    value={settings.horizontalOffset || 0} 
+                    onChange={e => updateSettings({ horizontalOffset: parseFloat(e.target.value) })}
+                    style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
+                  />
+                  <button type="button" onClick={() => updateSettings({ horizontalOffset: Math.min(8, (settings.horizontalOffset || 0) + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Right">▶</button>
+                </div>
+              </div>
+
+              {/* 2. Vertical Offset (Up / Down) */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                   <span>Vertical Shift:</span>
                   <span style={{ color: '#2563eb' }}>{settings.verticalOffset > 0 ? `+${settings.verticalOffset}` : settings.verticalOffset} mm</span>
                 </div>
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  <button type="button" onClick={() => updateSettings({ verticalOffset: Math.max(-10, settings.verticalOffset - 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▲</button>
+                  <button type="button" onClick={() => updateSettings({ verticalOffset: Math.max(-10, settings.verticalOffset - 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Nudge Up">▲</button>
                   <input 
                     type="range" 
                     min="-10" 
@@ -597,11 +626,11 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                     onChange={e => updateSettings({ verticalOffset: parseFloat(e.target.value) })}
                     style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                   />
-                  <button type="button" onClick={() => updateSettings({ verticalOffset: Math.min(10, settings.verticalOffset + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▼</button>
+                  <button type="button" onClick={() => updateSettings({ verticalOffset: Math.min(10, settings.verticalOffset + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Nudge Down">▼</button>
                 </div>
               </div>
 
-              {/* 2. Item Gap / Spacing */}
+              {/* 3. Item Gap / Spacing */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                   <span>Text & Item Gap:</span>
@@ -618,7 +647,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 />
               </div>
 
-              {/* 3. Barcode Height */}
+              {/* 4. Barcode Height */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                   <span>Barcode Height:</span>
@@ -635,7 +664,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 />
               </div>
 
-              {/* 4. Bottom Safety Margin */}
+              {/* 5. Bottom Safety Margin */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                   <span>Bottom Lift (Safety):</span>
@@ -698,7 +727,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   alignItems: 'center',
                   justifyContent: settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between',
                   gap: `${settings.elementGap * 3.2}px`,
-                  transform: `translateY(${settings.verticalOffset * 2.8}px)`,
+                  transform: `translate(${(settings.horizontalOffset || 0) * 2.8}px, ${(settings.verticalOffset || 0) * 2.8}px)`,
                   paddingBottom: `${settings.bottomSafeMargin * 2.8}px`,
                   boxSizing: 'border-box'
                 }}>
@@ -885,6 +914,8 @@ export const printVariantsBatchLabels = (
 
   const settings = getSavedSettings();
   const scale = (settings.fontScale || 100) / 100;
+  const hOffset = settings.horizontalOffset || 0;
+  const vOffset = settings.verticalOffset || 0;
 
   let iframe = document.getElementById('barcode-isolated-print-frame') as HTMLIFrameElement;
   if (!iframe) {
@@ -931,7 +962,8 @@ export const printVariantsBatchLabels = (
     const numCopies = Math.max(1, copies);
     return Array.from({ length: numCopies }).map(() => `
       <div class="print-label">
-        <div class="print-container" style="transform: translateY(${settings.verticalOffset}mm); gap: ${settings.elementGap}mm; padding-bottom: ${settings.bottomSafeMargin}mm; justify-content: ${settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between'};">
+        <div class="print-container" style="transform: translate(${hOffset}mm, ${vOffset}mm); gap: ${settings.elementGap}mm; padding-bottom: ${settings.bottomSafeMargin}mm; justify-content: ${settings.layoutMode === 'center' ? 'center' : settings.layoutMode === 'top' ? 'flex-start' : 'space-between'};">
+
           <!-- 1. Store Header -->
           <div class="print-header" style="gap: ${Math.max(0.2, settings.elementGap * 0.4)}mm;">
             <div class="store-title" style="font-size: ${(BASE_CONFIG.storeFontSize * scale).toFixed(1)}px;">${storeName}</div>
