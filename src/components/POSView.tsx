@@ -219,6 +219,8 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
           size: item.variant.size,
           color: item.variant.color,
           sku: item.variant.sku,
+          barcode: item.variant.barcode,
+          code: item.variant.barcode || item.variant.sku,
           quantity: item.quantity,
           unitPrice: item.customPrice !== undefined ? item.customPrice : item.variant.selling_price,
           totalPrice: item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)
