@@ -3,6 +3,7 @@ import { usePOSStore, useNotificationStore } from '../store';
 import type { ProductVariant } from '../store';
 import { dbService } from '../dbService';
 import { Search, Trash2, Plus, Minus, Printer, CheckCircle } from 'lucide-react';
+import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 
 interface POSViewProps {
   onRefreshStats: () => void;
@@ -25,8 +26,10 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null);
+  const [lastCompletedInvoice, setLastCompletedInvoice] = useState<InvoiceData | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
+
   const [paymentRows, setPaymentRows] = useState<{ method: string; amount: number }[]>([{ method: 'CASH', amount: 0 }]);
   const [checkingOut, setCheckingOut] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -198,17 +201,36 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         finalReceived,
         customerPhone
       );
+
+      const invoiceData: InvoiceData = {
+        invoiceId: saleId,
+        saleDate: new Date().toISOString(),
+        paymentMethod: paymentMethod,
+        customerPhone: customerPhone,
+        totalAmount: subtotal,
+        discountAmount: discount,
+        payableAmount: payableAmount,
+        receivedAmount: totalReceived,
+        dueAmount: dueAmount,
+        changeAmount: changeAmount,
+        paymentRows: paymentRows,
+        items: cart.map(item => ({
+          name: item.variant.product?.name || 'Item',
+          size: item.variant.size,
+          color: item.variant.color,
+          sku: item.variant.sku,
+          quantity: item.quantity,
+          unitPrice: item.customPrice !== undefined ? item.customPrice : item.variant.selling_price,
+          totalPrice: item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)
+        }))
+      };
+
+      setLastCompletedInvoice(invoiceData);
       setCheckoutSuccess(saleId);
       setShowReceipt(true);
       onRefreshStats();
       loadVariants();
       showToast('Checkout completed successfully!', 'success');
-      
-      if (autoPrint) {
-        setTimeout(() => {
-          window.print();
-        }, 150);
-      }
     } catch (err) {
       console.error(err);
       showToast('Failed to complete sale', 'error');
@@ -216,6 +238,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
       setCheckingOut(false);
     }
   };
+
 
   // Global scanner listener & POS quick keys (F2 = checkout, Ctrl+F = focus, Esc = new sale)
   useEffect(() => {
@@ -888,132 +911,21 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         </div>
       </div>
 
-      {/* RECEIPT MODAL */}
-      {showReceipt && checkoutSuccess && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.65)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000,
-          padding: '12px'
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: '380px', maxHeight: '92vh', overflowY: 'auto', backgroundColor: '#ffffff', color: 'black', padding: '18px', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed #cbd5e1', paddingBottom: '12px', marginBottom: '12px' }}>
-              <CheckCircle size={36} style={{ color: 'var(--color-success)', marginBottom: '4px' }} />
-              <h3 style={{ margin: '4px 0', fontSize: '20px', fontWeight: 900, color: 'var(--color-primary)', letterSpacing: '1px', textTransform: 'uppercase' }}>RAJMAHAL</h3>
-              <p style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', letterSpacing: '1.2px', textTransform: 'uppercase', margin: 0 }}>Elegance — Mens Wear</p>
-              <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>POS Terminal Invoice</p>
-            </div>
-            
-            <div style={{ fontSize: '11.5px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Invoice ID:</span>
-                <span style={{ fontWeight: 'bold' }}>{checkoutSuccess.toUpperCase()}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Date/Time:</span>
-                <span>{new Date().toLocaleString()}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Payment Mode:</span>
-                <span style={{ fontWeight: 'bold' }}>{paymentMethod}</span>
-              </div>
-              {customerPhone && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Customer Phone:</span>
-                  <span style={{ fontWeight: 'bold', color: 'var(--color-primary)' }}>{customerPhone}</span>
-                </div>
-              )}
-            </div>
-
-            <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: '10px', marginBottom: '10px' }}>
-              {cart.map(item => (
-                <div key={item.variant.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                  <span>{item.variant.product?.name} ({item.variant.size}/{item.variant.color}) x {item.quantity}</span>
-                  <span style={{ fontWeight: 600 }}>৳{(item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)).toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12.5px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Subtotal:</span>
-                <span style={{ fontWeight: 600 }}>৳{subtotal.toFixed(2)}</span>
-              </div>
-              {discount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-danger)' }}>
-                  <span>Discount:</span>
-                  <span style={{ fontWeight: 600 }}>-৳{discount.toFixed(2)}</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px solid #e2e8f0', paddingTop: '6px', fontSize: '13.5px', color: 'var(--color-primary)' }}>
-                <span>Total Payable:</span>
-                <span>৳{payableAmount.toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Amount Received:</span>
-                <span style={{ fontWeight: 600 }}>৳{totalReceived.toFixed(2)}</span>
-              </div>
-              
-              {/* Payment Methods Breakdown */}
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', borderTop: '1px dashed #e2e8f0', paddingTop: '4px', marginTop: '2px', marginBottom: '2px' }}>
-                {paymentRows.filter(r => r.amount > 0).map(r => {
-                  const labelMap: Record<string, string> = {
-                    CASH: 'Cash',
-                    CARD: 'Card',
-                    BKASH: 'bKash',
-                    NAGAD: 'Nagad',
-                    ROCKET: 'Rocket'
-                  };
-                  return (
-                    <div key={r.method} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                      <span>Paid via {labelMap[r.method] || r.method}:</span>
-                      <span style={{ fontWeight: 600 }}>৳{r.amount.toFixed(2)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {dueAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--color-danger)', fontSize: '12.5px', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
-                  <span>Due Balance:</span>
-                  <span>৳{dueAmount.toFixed(2)}</span>
-                </div>
-              )}
-              {changeAmount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--color-success)', fontSize: '12.5px', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
-                  <span>Change Returned:</span>
-                  <span>৳{changeAmount.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                className="btn btn-secondary" 
-                style={{ flex: 1, borderColor: '#cbd5e1' }}
-                onClick={() => window.print()}
-              >
-                <Printer size={15} /> Print
-              </button>
-              <button 
-                className="btn btn-primary" 
-                style={{ flex: 1 }}
-                onClick={handleNewSale}
-              >
-                New Sale
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* 58mm THERMAL RECEIPT MODAL */}
+      {showReceipt && lastCompletedInvoice && (
+        <InvoicePrintModal
+          data={lastCompletedInvoice}
+          onClose={() => {
+            setShowReceipt(false);
+            handleNewSale();
+          }}
+          onNewSale={() => {
+            setShowReceipt(false);
+            handleNewSale();
+          }}
+        />
       )}
     </div>
   );
 };
+
