@@ -374,30 +374,53 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               Optimized for <strong>Rongta 335A (58mm)</strong> • Compact Minimal Layout
             </p>
           </div>
-          <button 
-            onClick={onClose} 
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
-          >
-            <X size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowTuning(!showTuning)}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: 700,
+                borderRadius: '4px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: showTuning ? '#e0e7ff' : '#ffffff',
+                color: showTuning ? '#3730a3' : '#475569',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <Sliders size={12} /> {showTuning ? 'Hide Tuner' : 'Adjust Layout'}
+            </button>
+            <button 
+              onClick={onClose} 
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Quick Tuning Toolbar */}
-        <div style={{
-          backgroundColor: '#eff6ff',
-          border: '1px solid #bfdbfe',
-          borderRadius: '6px',
-          padding: '10px 12px',
-          marginBottom: '10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #dbeafe', paddingBottom: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sliders size={13} /> 58mm Printer Alignment & Content Tuner
-            </span>
-            <div style={{ display: 'flex', gap: '6px' }}>
+        {showTuning && (
+          <div style={{
+            backgroundColor: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '6px',
+            padding: '10px 12px',
+            marginBottom: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #dbeafe', paddingBottom: '4px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Sliders size={13} /> 58mm Printer Alignment & Content Tuner
+              </span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+
               <button
                 type="button"
                 onClick={() => updateSettings({ showStoreHeader: false, showInvoiceDetails: false, fontScale: 100, itemSpacing: 0.5, horizontalOffset: 0, verticalOffset: 0 })}
@@ -526,6 +549,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             </label>
           </div>
         </div>
+      )}
 
         {/* Live Preview of 58mm Receipt */}
         <div style={{

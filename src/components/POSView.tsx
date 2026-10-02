@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePOSStore, useNotificationStore } from '../store';
 import type { ProductVariant } from '../store';
 import { dbService } from '../dbService';
-import { Search, Trash2, Plus, Minus, Printer, CheckCircle } from 'lucide-react';
+import { Search, Trash2, Plus, Minus, Printer } from 'lucide-react';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 
 interface POSViewProps {
