@@ -167,7 +167,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
           <title> </title>
           <style>
             @page {
-              size: 40mm 50mm;
+              size: 38mm 48mm;
               margin: 0mm !important;
             }
             * {
@@ -178,42 +178,42 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             html, body {
               margin: 0 !important;
               padding: 0 !important;
-              width: 100% !important;
-              height: 100% !important;
+              width: 38mm !important;
+              height: 48mm !important;
               background: #ffffff !important;
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
               text-align: center !important;
             }
             .print-wrapper {
-              width: 100% !important;
+              width: 38mm !important;
               margin: 0 !important;
               padding: 0 !important;
             }
             .print-label {
-              display: flex !important;
-              flex-direction: column !important;
-              align-items: center !important;
-              justify-content: center !important;
-              width: 100% !important;
-              height: 100vh !important;
-              max-height: 100vh !important;
+              display: block !important;
+              width: 38mm !important;
+              height: 48mm !important;
+              max-width: 38mm !important;
+              max-height: 48mm !important;
               margin: 0 auto !important;
-              padding: 1.5mm !important;
+              padding: 2mm 1.5mm !important;
               box-sizing: border-box !important;
               page-break-after: always !important;
               break-after: page !important;
               page-break-inside: avoid !important;
               break-inside: avoid !important;
+              overflow: hidden !important;
               background: #ffffff !important;
             }
             .print-content {
               width: 100% !important;
-              max-width: 34mm !important;
-              margin: auto !important;
+              height: 100% !important;
+              max-width: 35mm !important;
+              margin: 0 auto !important;
               display: flex !important;
               flex-direction: column !important;
               align-items: center !important;
-              justify-content: center !important;
+              justify-content: space-between !important;
               text-align: center !important;
               box-sizing: border-box !important;
             }
@@ -222,19 +222,19 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               break-after: auto !important;
             }
             svg {
-              max-width: 26mm !important;
-              height: 8.5mm !important;
-              max-height: 8.5mm !important;
+              max-width: 28mm !important;
+              height: 9mm !important;
+              max-height: 9mm !important;
               width: auto !important;
               display: block !important;
-              margin: 0.5mm auto !important;
+              margin: 0 auto !important;
               text-align: center !important;
             }
             svg text {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
               font-weight: 800 !important;
               fill: #000000 !important;
-              letter-spacing: 0.4px !important;
+              letter-spacing: 0.3px !important;
             }
           </style>
         </head>
@@ -713,7 +713,7 @@ export const printVariantsBatchLabels = (
         <title> </title>
         <style>
           @page {
-            size: 40mm 50mm;
+            size: 38mm 48mm;
             margin: 0mm !important;
           }
           * {
@@ -724,42 +724,42 @@ export const printVariantsBatchLabels = (
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
+            width: 38mm !important;
+            height: 48mm !important;
             background: #ffffff !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
             text-align: center !important;
           }
           .print-wrapper {
-            width: 100% !important;
+            width: 38mm !important;
             margin: 0 !important;
             padding: 0 !important;
           }
           .print-label {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-            width: 100% !important;
-            height: 100vh !important;
-            max-height: 100vh !important;
+            display: block !important;
+            width: 38mm !important;
+            height: 48mm !important;
+            max-width: 38mm !important;
+            max-height: 48mm !important;
             margin: 0 auto !important;
-            padding: 1.5mm !important;
+            padding: 2mm 1.5mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             break-after: page !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
+            overflow: hidden !important;
             background: #ffffff !important;
           }
           .print-content {
             width: 100% !important;
-            max-width: 34mm !important;
-            margin: auto !important;
+            height: 100% !important;
+            max-width: 35mm !important;
+            margin: 0 auto !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
-            justify-content: center !important;
+            justify-content: space-between !important;
             text-align: center !important;
             box-sizing: border-box !important;
           }
@@ -768,19 +768,19 @@ export const printVariantsBatchLabels = (
             break-after: auto !important;
           }
           svg {
-            max-width: 26mm !important;
-            height: 8.5mm !important;
-            max-height: 8.5mm !important;
+            max-width: 28mm !important;
+            height: 9mm !important;
+            max-height: 9mm !important;
             width: auto !important;
             display: block !important;
-            margin: 0.5mm auto !important;
+            margin: 0 auto !important;
             text-align: center !important;
           }
           svg text {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
             font-weight: 800 !important;
             fill: #000000 !important;
-            letter-spacing: 0.4px !important;
+            letter-spacing: 0.3px !important;
           }
         </style>
       </head>
