@@ -3,7 +3,7 @@ import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
 import { Plus, Trash2, Tag, Printer, Search, Edit3, Boxes, Check, ChevronDown } from 'lucide-react';
-import { BarcodeLabelModal } from './BarcodeLabelModal';
+import { BarcodeLabelModal, printVariantsBatchLabels } from './BarcodeLabelModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { Pagination } from './Pagination';
 
@@ -482,6 +482,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [barcodeVariantModal, setBarcodeVariantModal] = useState<ProductVariant | null>(null);
   const [adjustingStockVariant, setAdjustingStockVariant] = useState<ProductVariant | null>(null);
+  const [createdVariantsForPrint, setCreatedVariantsForPrint] = useState<{
+    productName: string;
+    variants: ProductVariant[];
+    copiesMode: 'single' | 'stock';
+  } | null>(null);
   
   // Pagination and Search states
   const [prodSearch, setProdSearch] = useState('');
@@ -605,28 +610,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
   };
 
-  const handleClearAllProducts = () => {
-    if (products.length === 0) return;
-    showConfirm(
-      'Clear All Products',
-      'Are you sure you want to delete ALL products and their variants? This action cannot be undone and will reset your catalog.',
-      async () => {
-        try {
-          showToast('Clearing all products...', 'info');
-          await dbService.clearAllProducts();
-          setProducts([]);
-          setVariants([]);
-          setActiveProduct(null);
-          setVariantRows([]);
-          await loadData();
-          onRefreshStats();
-          showToast('All products and variants have been cleared.', 'success');
-        } catch (err: any) {
-          showToast(err?.message || 'Failed to clear products', 'error');
-        }
-      }
-    );
-  };
 
   const handleOpenAddVariant = () => {
     const rev = getReverseDate();
@@ -757,10 +740,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       setSavingVariant(true);
       showToast(`Creating ${variantRows.length} variant(s)...`, 'info');
 
+      const createdList: ProductVariant[] = [];
       for (const row of variantRows) {
         const finalColor = row.color.trim() || 'None';
         const generatedSku = row.sku || `${activeProduct.name.substring(0,3).toUpperCase()}-${finalColor.substring(0,3).toUpperCase()}-${row.size}`;
-        await dbService.saveVariant({
+        const saved = await dbService.saveVariant({
           product_id: activeProduct.id,
           sku: generatedSku,
           barcode: row.barcode.trim(),
@@ -771,13 +755,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           stock_quantity: Math.max(0, Number(row.stock_quantity) || 0),
           min_stock_level: row.min_stock_level || 5
         });
+        if (saved) {
+          createdList.push(saved);
+        }
       }
 
       setShowVariantModal(false);
       setVariantRows([]);
       await loadData();
       onRefreshStats();
-      showToast(`Successfully created ${variantRows.length} variant(s) with initial stock!`, 'success');
+      showToast(`Successfully created ${createdList.length} variant(s)!`, 'success');
+
+      if (createdList.length > 0) {
+        setCreatedVariantsForPrint({
+          productName: activeProduct.name,
+          variants: createdList,
+          copiesMode: 'single'
+        });
+      }
     } catch (err: any) {
       showToast(err?.message || 'Error creating variants', 'error');
     } finally {
@@ -956,17 +951,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredProducts.length} items cataloged</span>
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            {products.length > 0 && (
-              <button
-                type="button"
-                className="btn btn-sm"
-                style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 700, backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer' }}
-                onClick={handleClearAllProducts}
-                title="Clear all products and variants from database"
-              >
-                Clear All
-              </button>
-            )}
             <button className="btn btn-primary btn-sm" style={{ padding: '4px 10px' }} onClick={handleOpenAddProduct}>
               <Plus size={14} /> Add Product
             </button>
@@ -1790,6 +1774,121 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
             onRefreshStats();
           }}
         />
+      )}
+
+      {/* POST-CREATION PRICE TAG PRINT MODAL */}
+      {createdVariantsForPrint && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '540px', maxHeight: '92vh', overflowY: 'auto', padding: '22px', borderRadius: 'var(--radius-md)', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '14px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: 800 }}>
+                    ✓ Created Successfully
+                  </span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {createdVariantsForPrint.variants.length} {createdVariantsForPrint.variants.length === 1 ? 'Variant' : 'Variants'} Added
+                  </span>
+                </div>
+                <h3 style={{ margin: '6px 0 0 0', fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Print Price Tags — <span style={{ color: 'var(--color-primary)' }}>{createdVariantsForPrint.productName}</span>
+                </h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setCreatedVariantsForPrint(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', padding: '2px 6px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+              Do you want to print the barcode price tags for newly created variants? All tags will print serially.
+            </p>
+
+            {/* Created Variants summary list */}
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', maxHeight: '180px', overflowY: 'auto', backgroundColor: '#f8fafc', padding: '6px', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '14px' }}>
+              {createdVariantsForPrint.variants.map((v, i) => (
+                <div key={v.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 800, color: '#334155', minWidth: '20px' }}>#{i + 1}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>{v.size}</span>
+                    <span style={{ color: '#64748b' }}>•</span>
+                    <span style={{ color: '#475569' }}>{v.color}</span>
+                    <span style={{ color: '#64748b' }}>•</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#0f172a' }}>{v.barcode}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 800, color: '#059669' }}>৳{Number(v.selling_price).toFixed(0)}</span>
+                    <span style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', color: '#64748b' }}>
+                      Stock: {v.stock_quantity ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Copies Mode Selection */}
+            <div style={{ backgroundColor: '#f1f5f9', padding: '10px 12px', borderRadius: '6px', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Quantity to Print:</span>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: createdVariantsForPrint.copiesMode === 'single' ? 700 : 500 }}>
+                  <input
+                    type="radio"
+                    name="copiesMode"
+                    checked={createdVariantsForPrint.copiesMode === 'single'}
+                    onChange={() => setCreatedVariantsForPrint(prev => prev ? ({ ...prev, copiesMode: 'single' }) : null)}
+                  />
+                  1 Tag per Variant ({createdVariantsForPrint.variants.length} total)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: createdVariantsForPrint.copiesMode === 'stock' ? 700 : 500 }}>
+                  <input
+                    type="radio"
+                    name="copiesMode"
+                    checked={createdVariantsForPrint.copiesMode === 'stock'}
+                    onChange={() => setCreatedVariantsForPrint(prev => prev ? ({ ...prev, copiesMode: 'stock' }) : null)}
+                  />
+                  Match Stock Quantity ({createdVariantsForPrint.variants.reduce((sum, v) => sum + Math.max(1, v.stock_quantity ?? 1), 0)} total)
+                </label>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setCreatedVariantsForPrint(null)}
+              >
+                Skip / Done
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={() => {
+                  const printItems = createdVariantsForPrint.variants.map(v => ({
+                    variant: v,
+                    productName: createdVariantsForPrint.productName,
+                    copies: createdVariantsForPrint.copiesMode === 'stock' ? Math.max(1, v.stock_quantity ?? 1) : 1
+                  }));
+                  printVariantsBatchLabels(printItems);
+                  setCreatedVariantsForPrint(null);
+                  showToast('Sent price tags to printer!', 'success');
+                }}
+                style={{ fontWeight: 800, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Printer size={16} />
+                Print Price Tags ({createdVariantsForPrint.copiesMode === 'stock' 
+                  ? createdVariantsForPrint.variants.reduce((sum, v) => sum + Math.max(1, v.stock_quantity ?? 1), 0)
+                  : createdVariantsForPrint.variants.length})
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
 
     </div>

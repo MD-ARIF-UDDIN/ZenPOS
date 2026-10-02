@@ -562,3 +562,188 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
     </div>
   );
 };
+
+export interface BatchPrintItem {
+  variant: ProductVariant;
+  productName: string;
+  copies?: number;
+}
+
+export const printVariantsBatchLabels = (
+  items: BatchPrintItem[],
+  storeName: string = 'RAJMAHAL'
+) => {
+  if (!items || items.length === 0) return;
+
+  let iframe = document.getElementById('barcode-isolated-print-frame') as HTMLIFrameElement;
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'barcode-isolated-print-frame';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+  }
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) return;
+
+  const width = CONFIG.printWidth;
+  const height = CONFIG.printHeight;
+
+  // Temporary SVG container to render barcodes
+  const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+
+  const stickerItemsHtml = items.flatMap(({ variant, productName, copies = 1 }) => {
+    let svgHtml = '';
+    if (variant.barcode) {
+      try {
+        JsBarcode(tempSvg, variant.barcode, {
+          format: 'CODE128',
+          width: CONFIG.barcodeWidth,
+          height: CONFIG.barcodeHeight,
+          displayValue: true,
+          fontSize: CONFIG.barcodeFontSize,
+          font: 'monospace',
+          fontOptions: 'bold',
+          margin: 0,
+          textMargin: 1
+        });
+        svgHtml = tempSvg.outerHTML;
+      } catch (e) {
+        console.error('Failed to generate barcode SVG for batch print', e);
+      }
+    }
+
+    const numCopies = Math.max(1, copies);
+    return Array.from({ length: numCopies }).map(() => `
+      <div class="print-label">
+        <div class="print-content">
+          <!-- 1. Store Header (Top) -->
+          <div style="font-family: 'Outfit', sans-serif; font-size: ${CONFIG.storeFontSize}; font-weight: 900; letter-spacing: 0.3px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; max-width: 29mm; word-break: break-word;">
+            ${storeName}
+          </div>
+          <div style="font-size: ${CONFIG.subFontSize}; font-weight: 700; letter-spacing: 0.2px; color: #333333; text-transform: uppercase; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
+            Elegance — Mens Wear
+          </div>
+
+          <!-- 2. Product Name -->
+          <div style="font-size: ${CONFIG.prodFontSize}; font-weight: 800; color: #000000; margin: 1.5px auto 0 auto; width: 100%; max-width: 29mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+            ${productName}
+          </div>
+
+          <!-- 3. Size & Color Spec -->
+          <div style="font-size: ${CONFIG.specFontSize}; color: #111111; font-weight: 700; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
+            ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
+          </div>
+
+          <!-- 4. Barcode SVG (Center) -->
+          <div style="margin: 1.5px auto; width: 100%; max-width: 29mm; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
+            ${svgHtml}
+          </div>
+
+          <!-- 5. Price Tag (Bottom) -->
+          <div style="border-top: 1px dashed #222222; width: 100%; max-width: 29mm; padding-top: 1.5px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+            <div style="font-size: ${CONFIG.priceFontSize}; font-weight: 900; color: #000000; letter-spacing: 0.3px; line-height: 1.1; text-align: center; width: 100%;">
+              MRP: ৳${Number(variant.selling_price).toFixed(2)}
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  }).join('');
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title> </title>
+        <style>
+          @page {
+            size: ${width} ${height};
+            margin: 0mm !important;
+          }
+          * {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: ${width} !important;
+            height: ${height} !important;
+            background: #ffffff !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            text-align: center !important;
+            overflow: hidden !important;
+          }
+          .print-wrapper {
+            display: block !important;
+            width: ${width} !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            text-align: center !important;
+          }
+          .print-label {
+            position: relative !important;
+            width: ${width} !important;
+            height: ${height} !important;
+            max-width: ${width} !important;
+            max-height: ${height} !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background: #ffffff !important;
+            box-sizing: border-box !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .print-content {
+            width: 100% !important;
+            height: 100% !important;
+            transform: translate(${CONFIG.offsetX}mm, ${CONFIG.offsetY}mm) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            box-sizing: border-box !important;
+            padding: 1.5mm 3mm !important;
+            overflow: hidden !important;
+          }
+          .print-label:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+          svg {
+            max-width: 27mm !important;
+            width: 100% !important;
+            height: auto !important;
+            display: block !important;
+            margin: 0 auto !important;
+            text-align: center !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-wrapper">
+          ${stickerItemsHtml}
+        </div>
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+  }, 250);
+};
+
