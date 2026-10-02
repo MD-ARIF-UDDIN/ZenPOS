@@ -9,23 +9,23 @@ interface BarcodeLabelModalProps {
   onClose: () => void;
 }
 
-// Fixed calibrated printer configuration for 40x50mm / 35x45mm thermal stickers
+// Calibrated printer configuration for 35mm x 45mm vertical thermal stickers
 const CONFIG = {
-  printWidth: '40mm',
-  printHeight: '50mm',
-  cardWidth: '160px',
-  cardHeight: '200px',
-  cardPadding: '2px 4px',
-  storeFontSize: '10px',
-  subFontSize: '6.5px',
-  prodFontSize: '8.5px',
-  skuFontSize: '8px',
+  printWidth: '35mm',
+  printHeight: '45mm',
+  cardWidth: '170px',
+  cardHeight: '220px',
+  cardPadding: '8px 6px',
+  storeFontSize: '11px',
+  subFontSize: '7px',
+  prodFontSize: '9.5px',
+  skuFontSize: '8.5px',
   specFontSize: '8.5px',
-  priceFontSize: '12px',
-  offerFontSize: '12.5px',
-  barcodeWidth: 1.0,
-  barcodeHeight: 22,
-  barcodeFontSize: 8.5
+  priceFontSize: '13.5px',
+  offerFontSize: '14px',
+  barcodeWidth: 1.1,
+  barcodeHeight: 32,
+  barcodeFontSize: 9
 };
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
@@ -35,7 +35,17 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
   const [discountPrice, setDiscountPrice] = useState<number>(variant.selling_price);
   const [promoBadge, setPromoBadge] = useState<string>('SPECIAL OFFER');
+  const [verticalOffset, setVerticalOffset] = useState<number>(() => {
+    const saved = localStorage.getItem('pos_barcode_vertical_offset');
+    return saved !== null ? parseFloat(saved) : 0;
+  });
   const barcodeRefs = useRef<(SVGSVGElement | null)[]>([]);
+
+  const handleOffsetChange = (newVal: number) => {
+    const clamped = Math.max(-6, Math.min(6, newVal));
+    setVerticalOffset(clamped);
+    localStorage.setItem('pos_barcode_vertical_offset', String(clamped));
+  };
 
   useEffect(() => {
     barcodeRefs.current.forEach((svgEl) => {
@@ -51,7 +61,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             font: 'sans-serif',
             fontOptions: 'bold',
             margin: 0,
-            textMargin: 1
+            textMargin: 2
           });
         } catch (e) {
           console.error('Failed to generate barcode SVG', e);
@@ -94,7 +104,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
           font: 'sans-serif',
           fontOptions: 'bold',
           margin: 0,
-          textMargin: 1
+          textMargin: 2
         });
         svgHtml = itemSvg.outerHTML;
       } catch (e) {
@@ -103,59 +113,47 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
     }
 
     const stickerItemsHtml = Array.from({ length: copies }).map(() => `
-      <div class="print-label">
-        <div class="print-content">
-          <!-- 1. Store Header (Top) -->
-          <div style="font-family: 'Outfit', sans-serif; font-size: ${CONFIG.storeFontSize}; font-weight: 900; letter-spacing: 0.3px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; max-width: 32mm; word-break: break-word;">
-            ${storeName}
-          </div>
-          <div style="font-size: ${CONFIG.subFontSize}; font-weight: 700; letter-spacing: 0.2px; color: #333333; text-transform: uppercase; line-height: 1; margin: 0.2mm auto 0 auto; text-align: center; width: 100%; max-width: 32mm;">
-            Elegance — Mens Wear
-          </div>
+      <div class="print-label" style="${verticalOffset !== 0 ? `transform: translateY(${verticalOffset}mm);` : ''}">
+        <!-- 1. Store Header (Top) -->
+        <div class="print-header">
+          <div class="store-title">${storeName}</div>
+          <div class="store-sub">Elegance — Mens Wear</div>
+        </div>
 
-          <!-- 2. Product Name -->
-          <div style="font-size: ${CONFIG.prodFontSize}; font-weight: 800; color: #000000; margin: 0.8mm auto 0 auto; width: 100%; max-width: 32mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-            ${productName}
-          </div>
-
-          <!-- 2b. Product Code / SKU (no label) -->
-          ${variant.sku ? `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: ${CONFIG.skuFontSize}; font-weight: 800; color: #111111; margin: 0.3mm auto 0 auto; text-align: center; width: 100%; max-width: 32mm; letter-spacing: 0.3px; line-height: 1.15;">
-              ${variant.sku}
-            </div>
-          ` : ''}
-
-          <!-- 3. Size & Color Spec -->
-          <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 0.3mm auto 0 auto; text-align: center; width: 100%; max-width: 32mm;">
+        <!-- 2. Product Name & Specs -->
+        <div class="product-info">
+          <div class="product-title">${productName}</div>
+          ${variant.sku ? `<div class="product-sku">${variant.sku}</div>` : ''}
+          <div class="product-spec">
             ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
           </div>
-
-          <!-- 4. Barcode SVG (Center) -->
-          <div style="margin: 0.5mm auto; width: 100%; max-width: 32mm; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
-            ${svgHtml}
-          </div>
-
-          <!-- 5. Price Tag (Bottom) -->
-          ${showPrice ? `
-            <div style="border-top: 1px dashed #222222; width: 100%; max-width: 32mm; padding-top: 0.6mm; margin: 0.4mm auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
-              ${hasDiscount ? `
-                <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
-                  <span style="font-size: ${CONFIG.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
-                    ৳${variant.selling_price.toFixed(0)}
-                  </span>
-                  <span style="font-size: ${CONFIG.offerFontSize}; font-weight: 900; color: #000000;">
-                    ৳${discountPrice.toFixed(0)}
-                  </span>
-                </div>
-                ${promoBadge ? `<div style="font-size: ${CONFIG.subFontSize}; font-weight: 800; border: 1px solid #000; padding: 0 3px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 0.3mm;">${promoBadge}</div>` : ''}
-              ` : `
-                <div style="font-size: ${CONFIG.priceFontSize}; font-weight: 900; color: #000000; letter-spacing: 0.3px; line-height: 1.1; text-align: center; width: 100%;">
-                  MRP: ৳${variant.selling_price.toFixed(2)}
-                </div>
-              `}
-            </div>
-          ` : ''}
         </div>
+
+        <!-- 3. Barcode SVG (Center) -->
+        <div class="barcode-box">
+          ${svgHtml}
+        </div>
+
+        <!-- 4. Price Tag (Bottom) -->
+        ${showPrice ? `
+          <div class="price-box">
+            ${hasDiscount ? `
+              <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
+                <span style="font-size: ${CONFIG.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
+                  ৳${variant.selling_price.toFixed(0)}
+                </span>
+                <span style="font-size: ${CONFIG.offerFontSize}; font-weight: 900; color: #000000;">
+                  ৳${discountPrice.toFixed(0)}
+                </span>
+              </div>
+              ${promoBadge ? `<div style="font-size: ${CONFIG.subFontSize}; font-weight: 800; border: 1px solid #000; padding: 0 2px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 0.3mm;">${promoBadge}</div>` : ''}
+            ` : `
+              <div class="price-mrp">
+                MRP: ৳${variant.selling_price.toFixed(2)}
+              </div>
+            `}
+          </div>
+        ` : ''}
       </div>
     `).join('');
 
@@ -167,7 +165,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
           <title> </title>
           <style>
             @page {
-              size: 38mm 48mm;
+              size: 35mm 45mm;
               margin: 0mm !important;
             }
             * {
@@ -178,25 +176,29 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             html, body {
               margin: 0 !important;
               padding: 0 !important;
-              width: 38mm !important;
-              height: 48mm !important;
+              width: 35mm !important;
+              height: 45mm !important;
               background: #ffffff !important;
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
               text-align: center !important;
+              overflow: hidden !important;
             }
             .print-wrapper {
-              width: 38mm !important;
+              width: 35mm !important;
               margin: 0 !important;
               padding: 0 !important;
             }
             .print-label {
-              display: block !important;
-              width: 38mm !important;
-              height: 48mm !important;
-              max-width: 38mm !important;
-              max-height: 48mm !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-between !important;
+              align-items: center !important;
+              width: 35mm !important;
+              height: 44.5mm !important;
+              max-width: 35mm !important;
+              max-height: 44.5mm !important;
               margin: 0 auto !important;
-              padding: 2mm 1.5mm !important;
+              padding: 2.2mm 1.5mm 1.8mm 1.5mm !important;
               box-sizing: border-box !important;
               page-break-after: always !important;
               break-after: page !important;
@@ -205,27 +207,98 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               overflow: hidden !important;
               background: #ffffff !important;
             }
-            .print-content {
-              width: 100% !important;
-              height: 100% !important;
-              max-width: 35mm !important;
-              margin: 0 auto !important;
-              display: flex !important;
-              flex-direction: column !important;
-              align-items: center !important;
-              justify-content: space-between !important;
-              text-align: center !important;
-              box-sizing: border-box !important;
-            }
             .print-label:last-child {
               page-break-after: auto !important;
               break-after: auto !important;
             }
+            .print-header {
+              width: 100% !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              justify-content: center !important;
+            }
+            .store-title {
+              font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif !important;
+              font-size: ${CONFIG.storeFontSize} !important;
+              font-weight: 900 !important;
+              letter-spacing: 0.5px !important;
+              color: #000000 !important;
+              text-transform: uppercase !important;
+              line-height: 1.1 !important;
+              margin: 0 !important;
+              text-align: center !important;
+              width: 100% !important;
+              max-width: 32mm !important;
+              word-break: break-word !important;
+            }
+            .store-sub {
+              font-size: ${CONFIG.subFontSize} !important;
+              font-weight: 700 !important;
+              letter-spacing: 0.3px !important;
+              color: #222222 !important;
+              text-transform: uppercase !important;
+              line-height: 1 !important;
+              margin-top: 0.3mm !important;
+              text-align: center !important;
+              width: 100% !important;
+            }
+            .product-info {
+              width: 100% !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              justify-content: center !important;
+              margin-top: 0.4mm !important;
+            }
+            .product-title {
+              font-size: ${CONFIG.prodFontSize} !important;
+              font-weight: 800 !important;
+              color: #000000 !important;
+              line-height: 1.15 !important;
+              text-align: center !important;
+              word-break: break-word !important;
+              overflow: hidden !important;
+              display: -webkit-box !important;
+              -webkit-line-clamp: 2 !important;
+              -webkit-box-orient: vertical !important;
+              max-width: 32mm !important;
+            }
+            .product-sku {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
+              font-size: ${CONFIG.skuFontSize} !important;
+              font-weight: 800 !important;
+              color: #111111 !important;
+              margin-top: 0.3mm !important;
+              letter-spacing: 0.3px !important;
+              line-height: 1.1 !important;
+              text-align: center !important;
+              max-width: 32mm !important;
+            }
+            .product-spec {
+              font-size: ${CONFIG.specFontSize} !important;
+              color: #000000 !important;
+              font-weight: 800 !important;
+              line-height: 1.1 !important;
+              margin-top: 0.3mm !important;
+              text-align: center !important;
+              max-width: 32mm !important;
+            }
+            .barcode-box {
+              width: 100% !important;
+              max-width: 32mm !important;
+              display: flex !important;
+              justify-content: center !important;
+              align-items: center !important;
+              text-align: center !important;
+              margin: 0.4mm 0 !important;
+              overflow: hidden !important;
+            }
             svg {
-              max-width: 28mm !important;
-              height: 9mm !important;
-              max-height: 9mm !important;
-              width: auto !important;
+              width: 92% !important;
+              max-width: 31mm !important;
+              height: 13.5mm !important;
+              max-height: 14.5mm !important;
               display: block !important;
               margin: 0 auto !important;
               text-align: center !important;
@@ -234,7 +307,28 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
               font-weight: 800 !important;
               fill: #000000 !important;
+              letter-spacing: 0.5px !important;
+            }
+            .price-box {
+              width: 100% !important;
+              max-width: 32mm !important;
+              border-top: 1px dashed #000000 !important;
+              padding-top: 0.8mm !important;
+              margin-top: 0.3mm !important;
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: center !important;
+              justify-content: center !important;
+              text-align: center !important;
+            }
+            .price-mrp {
+              font-size: ${CONFIG.priceFontSize} !important;
+              font-weight: 900 !important;
+              color: #000000 !important;
               letter-spacing: 0.3px !important;
+              line-height: 1.1 !important;
+              text-align: center !important;
+              width: 100% !important;
             }
           </style>
         </head>
@@ -288,7 +382,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               Print Barcode Sticker
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              {productName} — ({variant.color || 'Default'} / {variant.size || 'Free Size'}) • <strong>35mm × 45mm</strong>
+              {productName} — ({variant.color || 'Default'} / {variant.size || 'Free Size'}) • <strong>35mm × 45mm</strong> (Evenly Distributed)
             </p>
           </div>
           <button 
@@ -333,6 +427,39 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               className="form-control"
               style={{ height: '34px', fontSize: '12px', padding: '4px 8px' }}
             />
+          </div>
+
+          {/* Vertical Position Nudge Controls */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>
+              Vertical Align ({verticalOffset > 0 ? `+${verticalOffset}` : verticalOffset}mm)
+            </label>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <button 
+                type="button" 
+                onClick={() => handleOffsetChange(verticalOffset - 1)}
+                title="Nudge content 1mm higher"
+                style={{ height: '28px', padding: '0 8px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
+              >
+                ▲ Up
+              </button>
+              <button 
+                type="button" 
+                onClick={() => handleOffsetChange(0)}
+                title="Reset to 0mm center"
+                style={{ height: '28px', padding: '0 6px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer' }}
+              >
+                Reset
+              </button>
+              <button 
+                type="button" 
+                onClick={() => handleOffsetChange(verticalOffset + 1)}
+                title="Nudge content 1mm lower"
+                style={{ height: '28px', padding: '0 8px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
+              >
+                ▼ Down
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '18px' }}>
@@ -433,98 +560,99 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  justifyContent: 'space-between',
                   padding: CONFIG.cardPadding,
                   boxSizing: 'border-box'
                 }}>
                   {/* 1. Store Name (Top) */}
-                  <div style={{
-                    fontFamily: "'Outfit', sans-serif",
-                    fontSize: CONFIG.storeFontSize,
-                    fontWeight: 900,
-                    letterSpacing: '0.3px',
-                    color: '#0b2545',
-                    textTransform: 'uppercase',
-                    lineHeight: '1.1',
-                    width: '100%',
-                    textAlign: 'center',
-                    wordBreak: 'break-word'
-                  }}>
-                    {storeName}
-                  </div>
-                  <div style={{
-                    fontSize: CONFIG.subFontSize,
-                    fontWeight: 700,
-                    letterSpacing: '0.2px',
-                    color: '#64748b',
-                    textTransform: 'uppercase',
-                    marginTop: '1px',
-                    lineHeight: 1,
-                    width: '100%',
-                    textAlign: 'center'
-                  }}>
-                    Elegance — Mens Wear
-                  </div>
-
-                  {/* 2. Product Name */}
-                  <div style={{
-                    fontSize: CONFIG.prodFontSize,
-                    fontWeight: 800,
-                    color: '#1e293b',
-                    marginTop: '2px',
-                    width: '100%',
-                    wordBreak: 'break-word',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    lineHeight: 1.15,
-                    textAlign: 'center'
-                  }}>
-                    {productName}
-                  </div>
-
-                  {/* 2b. Product Code / SKU (no label) */}
-                  {variant.sku && (
+                  <div style={{ width: '100%' }}>
                     <div style={{
-                      fontSize: CONFIG.skuFontSize,
+                      fontFamily: "'Outfit', sans-serif",
+                      fontSize: CONFIG.storeFontSize,
+                      fontWeight: 900,
+                      letterSpacing: '0.4px',
+                      color: '#0b2545',
+                      textTransform: 'uppercase',
+                      lineHeight: '1.1',
+                      width: '100%',
+                      textAlign: 'center',
+                      wordBreak: 'break-word'
+                    }}>
+                      {storeName}
+                    </div>
+                    <div style={{
+                      fontSize: CONFIG.subFontSize,
+                      fontWeight: 700,
+                      letterSpacing: '0.2px',
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      marginTop: '2px',
+                      lineHeight: 1,
+                      width: '100%',
+                      textAlign: 'center'
+                    }}>
+                      Elegance — Mens Wear
+                    </div>
+                  </div>
+
+                  {/* 2. Product Name & Specs */}
+                  <div style={{ width: '100%', margin: '2px 0' }}>
+                    <div style={{
+                      fontSize: CONFIG.prodFontSize,
                       fontWeight: 800,
                       color: '#1e293b',
-                      marginTop: '1px',
-                      textAlign: 'center',
                       width: '100%',
-                      letterSpacing: '0.3px',
-                      lineHeight: 1.15
+                      wordBreak: 'break-word',
+                      overflow: 'hidden',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      lineHeight: 1.15,
+                      textAlign: 'center'
                     }}>
-                      {variant.sku}
+                      {productName}
                     </div>
-                  )}
 
-                  {/* 3. Variant Specs */}
-                  <div style={{
-                    fontSize: CONFIG.specFontSize,
-                    color: '#0f172a',
-                    fontWeight: 800,
-                    marginTop: '1px',
-                    lineHeight: 1.1,
-                    width: '100%',
-                    textAlign: 'center'
-                  }}>
-                    {variant.size && `Size: ${variant.size}`} {variant.color && variant.color !== 'None' && ` • ${variant.color}`}
+                    {variant.sku && (
+                      <div style={{
+                        fontSize: CONFIG.skuFontSize,
+                        fontWeight: 800,
+                        color: '#1e293b',
+                        marginTop: '2px',
+                        textAlign: 'center',
+                        width: '100%',
+                        letterSpacing: '0.3px',
+                        lineHeight: 1.15
+                      }}>
+                        {variant.sku}
+                      </div>
+                    )}
+
+                    <div style={{
+                      fontSize: CONFIG.specFontSize,
+                      color: '#0f172a',
+                      fontWeight: 800,
+                      marginTop: '2px',
+                      lineHeight: 1.1,
+                      width: '100%',
+                      textAlign: 'center'
+                    }}>
+                      {variant.size && `Size: ${variant.size}`} {variant.color && variant.color !== 'None' && ` • ${variant.color}`}
+                    </div>
                   </div>
 
-                  {/* 4. High Quality SVG Barcode */}
+                  {/* 3. High Quality SVG Barcode */}
                   <div style={{ margin: '2px auto', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                    <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '85%', maxHeight: '35px', height: 'auto', margin: '0 auto', display: 'block' }} />
+                    <svg ref={el => { barcodeRefs.current[idx] = el; }} style={{ maxWidth: '92%', maxHeight: '44px', height: 'auto', margin: '0 auto', display: 'block' }} />
                   </div>
 
-                  {/* 5. Price Tag (Bottom) */}
+                  {/* 4. Price Tag (Bottom) */}
                   {showPrice && (
                     <div style={{
                       borderTop: '1px dashed #cbd5e1',
                       width: '100%',
-                      paddingTop: '2px',
-                      marginTop: '1px',
+                      paddingTop: '4px',
+                      marginTop: '2px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -573,7 +701,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                           borderRadius: '2px',
                           letterSpacing: '0.3px',
                           textTransform: 'uppercase',
-                          marginTop: '1px',
+                          marginTop: '2px',
                           lineHeight: 1
                         }}>
                           {promoBadge}
@@ -590,7 +718,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
         {/* Modal Footer Controls */}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eef2f6', paddingTop: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            🏷️ Centered Vertical Tag (40mm × 50mm / 35mm × 45mm)
+            🏷️ Centered Vertical Tag (35mm × 45mm Portrait)
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
@@ -652,7 +780,7 @@ export const printVariantsBatchLabels = (
           font: 'sans-serif',
           fontOptions: 'bold',
           margin: 0,
-          textMargin: 1
+          textMargin: 2
         });
         svgHtml = itemSvg.outerHTML;
       } catch (e) {
@@ -663,42 +791,30 @@ export const printVariantsBatchLabels = (
     const numCopies = Math.max(1, copies);
     return Array.from({ length: numCopies }).map(() => `
       <div class="print-label">
-        <div class="print-content">
-          <!-- 1. Store Header (Top) -->
-          <div style="font-family: 'Outfit', sans-serif; font-size: ${CONFIG.storeFontSize}; font-weight: 900; letter-spacing: 0.3px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; max-width: 32mm; word-break: break-word;">
-            ${storeName}
-          </div>
-          <div style="font-size: ${CONFIG.subFontSize}; font-weight: 700; letter-spacing: 0.2px; color: #333333; text-transform: uppercase; line-height: 1; margin: 0.2mm auto 0 auto; text-align: center; width: 100%; max-width: 32mm;">
-            Elegance — Mens Wear
-          </div>
+        <!-- 1. Store Header (Top) -->
+        <div class="print-header">
+          <div class="store-title">${storeName}</div>
+          <div class="store-sub">Elegance — Mens Wear</div>
+        </div>
 
-          <!-- 2. Product Name -->
-          <div style="font-size: ${CONFIG.prodFontSize}; font-weight: 800; color: #000000; margin: 0.8mm auto 0 auto; width: 100%; max-width: 32mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-            ${productName}
-          </div>
-
-          <!-- 2b. Product Code / SKU (no label) -->
-          ${variant.sku ? `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: ${CONFIG.skuFontSize}; font-weight: 800; color: #111111; margin: 0.3mm auto 0 auto; text-align: center; width: 100%; max-width: 32mm; letter-spacing: 0.3px; line-height: 1.15;">
-              ${variant.sku}
-            </div>
-          ` : ''}
-
-          <!-- 3. Size & Color Spec -->
-          <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 0.3mm auto 0 auto; text-align: center; width: 100%; max-width: 32mm;">
+        <!-- 2. Product Name & Specs -->
+        <div class="product-info">
+          <div class="product-title">${productName}</div>
+          ${variant.sku ? `<div class="product-sku">${variant.sku}</div>` : ''}
+          <div class="product-spec">
             ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
           </div>
+        </div>
 
-          <!-- 4. Barcode SVG (Center) -->
-          <div style="margin: 0.5mm auto; width: 100%; max-width: 32mm; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
-            ${svgHtml}
-          </div>
+        <!-- 3. Barcode SVG (Center) -->
+        <div class="barcode-box">
+          ${svgHtml}
+        </div>
 
-          <!-- 5. Price Tag (Bottom) -->
-          <div style="border-top: 1px dashed #222222; width: 100%; max-width: 32mm; padding-top: 0.6mm; margin: 0.4mm auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
-            <div style="font-size: ${CONFIG.priceFontSize}; font-weight: 900; color: #000000; letter-spacing: 0.3px; line-height: 1.1; text-align: center; width: 100%;">
-              MRP: ৳${Number(variant.selling_price).toFixed(2)}
-            </div>
+        <!-- 4. Price Tag (Bottom) -->
+        <div class="price-box">
+          <div class="price-mrp">
+            MRP: ৳${Number(variant.selling_price).toFixed(2)}
           </div>
         </div>
       </div>
@@ -713,7 +829,7 @@ export const printVariantsBatchLabels = (
         <title> </title>
         <style>
           @page {
-            size: 38mm 48mm;
+            size: 35mm 45mm;
             margin: 0mm !important;
           }
           * {
@@ -724,25 +840,29 @@ export const printVariantsBatchLabels = (
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: 38mm !important;
-            height: 48mm !important;
+            width: 35mm !important;
+            height: 45mm !important;
             background: #ffffff !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif;
             text-align: center !important;
+            overflow: hidden !important;
           }
           .print-wrapper {
-            width: 38mm !important;
+            width: 35mm !important;
             margin: 0 !important;
             padding: 0 !important;
           }
           .print-label {
-            display: block !important;
-            width: 38mm !important;
-            height: 48mm !important;
-            max-width: 38mm !important;
-            max-height: 48mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            width: 35mm !important;
+            height: 44.5mm !important;
+            max-width: 35mm !important;
+            max-height: 44.5mm !important;
             margin: 0 auto !important;
-            padding: 2mm 1.5mm !important;
+            padding: 2.2mm 1.5mm 1.8mm 1.5mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -751,27 +871,98 @@ export const printVariantsBatchLabels = (
             overflow: hidden !important;
             background: #ffffff !important;
           }
-          .print-content {
-            width: 100% !important;
-            height: 100% !important;
-            max-width: 35mm !important;
-            margin: 0 auto !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            text-align: center !important;
-            box-sizing: border-box !important;
-          }
           .print-label:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
           }
+          .print-header {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          .store-title {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            font-size: ${CONFIG.storeFontSize} !important;
+            font-weight: 900 !important;
+            letter-spacing: 0.5px !important;
+            color: #000000 !important;
+            text-transform: uppercase !important;
+            line-height: 1.1 !important;
+            margin: 0 !important;
+            text-align: center !important;
+            width: 100% !important;
+            max-width: 32mm !important;
+            word-break: break-word !important;
+          }
+          .store-sub {
+            font-size: ${CONFIG.subFontSize} !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.3px !important;
+            color: #222222 !important;
+            text-transform: uppercase !important;
+            line-height: 1 !important;
+            margin-top: 0.3mm !important;
+            text-align: center !important;
+            width: 100% !important;
+          }
+          .product-info {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin-top: 0.4mm !important;
+          }
+          .product-title {
+            font-size: ${CONFIG.prodFontSize} !important;
+            font-weight: 800 !important;
+            color: #000000 !important;
+            line-height: 1.15 !important;
+            text-align: center !important;
+            word-break: break-word !important;
+            overflow: hidden !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            max-width: 32mm !important;
+          }
+          .product-sku {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
+            font-size: ${CONFIG.skuFontSize} !important;
+            font-weight: 800 !important;
+            color: #111111 !important;
+            margin-top: 0.3mm !important;
+            letter-spacing: 0.3px !important;
+            line-height: 1.1 !important;
+            text-align: center !important;
+            max-width: 32mm !important;
+          }
+          .product-spec {
+            font-size: ${CONFIG.specFontSize} !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            line-height: 1.1 !important;
+            margin-top: 0.3mm !important;
+            text-align: center !important;
+            max-width: 32mm !important;
+          }
+          .barcode-box {
+            width: 100% !important;
+            max-width: 32mm !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            text-align: center !important;
+            margin: 0.4mm 0 !important;
+            overflow: hidden !important;
+          }
           svg {
-            max-width: 28mm !important;
-            height: 9mm !important;
-            max-height: 9mm !important;
-            width: auto !important;
+            width: 92% !important;
+            max-width: 31mm !important;
+            height: 13.5mm !important;
+            max-height: 14.5mm !important;
             display: block !important;
             margin: 0 auto !important;
             text-align: center !important;
@@ -780,7 +971,28 @@ export const printVariantsBatchLabels = (
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
             font-weight: 800 !important;
             fill: #000000 !important;
+            letter-spacing: 0.5px !important;
+          }
+          .price-box {
+            width: 100% !important;
+            max-width: 32mm !important;
+            border-top: 1px dashed #000000 !important;
+            padding-top: 0.8mm !important;
+            margin-top: 0.3mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+          }
+          .price-mrp {
+            font-size: ${CONFIG.priceFontSize} !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
             letter-spacing: 0.3px !important;
+            line-height: 1.1 !important;
+            text-align: center !important;
+            width: 100% !important;
           }
         </style>
       </head>
@@ -798,4 +1010,5 @@ export const printVariantsBatchLabels = (
     iframe.contentWindow?.print();
   }, 350);
 };
+
 
