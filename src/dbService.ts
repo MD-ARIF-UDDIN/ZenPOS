@@ -83,7 +83,8 @@ export const dbService = {
     }
     const { data, error } = await supabase
       .from('product_variants')
-      .select('*, product:products(*)');
+      .select('*, product:products(*)')
+      .limit(50000);
     if (error) throw error;
     const result = (data || []).map(v => ({
       ...v,
@@ -98,20 +99,30 @@ export const dbService = {
     if (payload.barcode) {
       payload.barcode = payload.barcode.trim().replace(/[^0-9a-zA-Z]/g, '');
     } else if (!payload.id) {
-      const existing = await this.getVariants();
+      const existing = await this.getVariants(true);
+      const usedBarcodes = new Set<string>();
       let maxNum = 0;
       for (const v of existing) {
         if (v.barcode) {
-          const clean = v.barcode.replace(/[^0-9]/g, '');
-          if (clean && clean.length <= 8) {
-            const parsed = parseInt(clean, 10);
-            if (!isNaN(parsed) && parsed > maxNum) {
-              maxNum = parsed;
+          const clean = v.barcode.trim().replace(/[^0-9a-zA-Z]/g, '');
+          if (clean) {
+            usedBarcodes.add(clean);
+            usedBarcodes.add(clean.toLowerCase());
+            const digits = clean.replace(/[^0-9]/g, '');
+            if (digits && digits.length <= 12) {
+              const parsed = parseInt(digits, 10);
+              if (!isNaN(parsed) && parsed > maxNum) {
+                maxNum = parsed;
+              }
             }
           }
         }
       }
-      payload.barcode = String(maxNum + 1).padStart(6, '0');
+      let candidate = Math.max(1, maxNum + 1);
+      while (usedBarcodes.has(String(candidate).padStart(6, '0')) || usedBarcodes.has(String(candidate))) {
+        candidate++;
+      }
+      payload.barcode = String(candidate).padStart(6, '0');
     }
 
     const { data, error } = await supabase
@@ -119,7 +130,18 @@ export const dbService = {
       .upsert(payload)
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+      const errMsg = error.message || '';
+      if (error.code === '23505' || errMsg.includes('duplicate key') || errMsg.includes('unique constraint') || errMsg.includes('unique contsraint')) {
+        if (errMsg.includes('barcode')) {
+          throw new Error(`Barcode "${payload.barcode}" already exists in the inventory. Please generate or enter a different barcode.`);
+        }
+        if (errMsg.includes('sku')) {
+          throw new Error(`SKU "${payload.sku}" already exists in the inventory. Please change the bundle or serial number.`);
+        }
+      }
+      throw error;
+    }
 
     if (!variant.id && data && data.stock_quantity > 0) {
       try {
