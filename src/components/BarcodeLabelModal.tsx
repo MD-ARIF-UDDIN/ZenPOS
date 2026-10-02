@@ -9,12 +9,12 @@ interface BarcodeLabelModalProps {
   onClose: () => void;
 }
 
-// Fixed calibrated printer configuration
+// Fixed calibrated printer configuration for 40x50mm / 35x45mm thermal stickers
 const CONFIG = {
-  printWidth: '35mm',
-  printHeight: '45mm',
-  offsetX: -1, // -1mm Left
-  offsetY: 6,  // +6mm Down
+  printWidth: '38mm',
+  printHeight: '48mm',
+  offsetX: 0,  // Centered X
+  offsetY: 0,  // Centered Y (removes 6mm bottom shift that was cutting off price)
   cardWidth: '160px',
   cardHeight: '205px',
   cardPadding: '2px 6px',
