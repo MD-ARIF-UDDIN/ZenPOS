@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { Search, FileText, Printer, X, Eye } from 'lucide-react';
 import { Pagination } from './Pagination';
-import { printThermalReceipt58mm } from './ThermalReceiptModal';
 
 export const SalesListView: React.FC = () => {
   const [sales, setSales] = useState<any[]>([]);
@@ -46,28 +45,7 @@ export const SalesListView: React.FC = () => {
   };
 
   const handlePrint = () => {
-    if (!selectedSale) return;
-    printThermalReceipt58mm({
-      saleId: selectedSale.id,
-      saleDate: selectedSale.sale_date,
-      items: saleItems.map(item => ({
-        productName: item.variant?.product?.name || 'Item',
-        size: item.variant?.size,
-        color: item.variant?.color,
-        barcode: item.variant?.barcode,
-        quantity: item.quantity,
-        unitPrice: item.unit_price || (item.total_price / (item.quantity || 1)),
-        totalPrice: item.total_price
-      })),
-      subtotal: selectedSale.total_amount,
-      discount: selectedSale.discount_amount,
-      payableAmount: selectedSale.payable_amount,
-      totalReceived: selectedSale.payment_method === 'CASH' ? selectedSale.received_amount : (selectedSale.payment_method === 'DUE' ? 0 : selectedSale.payable_amount),
-      changeAmount: selectedSale.change_amount || 0,
-      dueAmount: selectedSale.due_amount || 0,
-      paymentMethod: selectedSale.payment_method,
-      customerPhone: selectedSale.customer_phone || undefined
-    });
+    window.print();
   };
 
   // Filter sales
