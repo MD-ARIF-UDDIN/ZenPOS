@@ -493,6 +493,37 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             </label>
           </div>
 
+          {/* Conditional Discount Fields */}
+          {hasDiscount && (
+            <div style={{ display: 'flex', gap: '8px', width: '100%', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#e11d48', display: 'block', marginBottom: '2px' }}>
+                  Sale / Offer Price (৳)
+                </label>
+                <input 
+                  type="number" 
+                  value={discountPrice} 
+                  onChange={e => setDiscountPrice(Number(e.target.value))}
+                  className="form-control"
+                  style={{ height: '30px', fontSize: '12px', fontWeight: 700, borderColor: '#fda4af' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
+                  Promo Badge Label
+                </label>
+                <input 
+                  type="text" 
+                  value={promoBadge} 
+                  onChange={e => setPromoBadge(e.target.value)}
+                  placeholder="e.g. SALE, 20% OFF, SPECIAL"
+                  className="form-control"
+                  style={{ height: '30px', fontSize: '12px' }}
+                />
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setShowTuningPanel(!showTuningPanel)}
@@ -512,6 +543,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             ⚙️ {showTuningPanel ? 'Hide Tuning' : 'Adjust Layout'}
           </button>
         </div>
+
 
         {/* Live Alignment & Spacing Tuning Controls */}
         {showTuningPanel && (
