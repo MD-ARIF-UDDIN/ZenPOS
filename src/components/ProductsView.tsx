@@ -511,6 +511,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [bundleNumber, setBundleNumber] = useState('1');
   const [variantRows, setVariantRows] = useState<VariantRowDraft[]>([]);
+  const [copyCostToAll, setCopyCostToAll] = useState(false);
+  const [copyPriceToAll, setCopyPriceToAll] = useState(false);
   const [savingVariant, setSavingVariant] = useState(false);
   const [deletingVariantId, setDeletingVariantId] = useState<string | null>(null);
 
@@ -615,6 +617,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     const rev = getReverseDate();
     const defaultBundle = '1';
     setBundleNumber(defaultBundle);
+    setCopyCostToAll(false);
+    setCopyPriceToAll(false);
 
     const startSerial = getNextSerialForBundle(variants, rev, defaultBundle);
     setVariantRows([
@@ -626,7 +630,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         sku: '',
         purchase_price: 0,
         selling_price: 0,
-        stock_quantity: 0,
+        stock_quantity: 1,
         min_stock_level: 5
       }
     ]);
@@ -644,12 +648,30 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     })));
   };
 
+  const handleToggleCopyCost = (checked: boolean) => {
+    setCopyCostToAll(checked);
+    if (checked && variantRows.length > 0) {
+      const firstCost = variantRows[0].purchase_price || 0;
+      setVariantRows(prev => prev.map(r => ({ ...r, purchase_price: firstCost })));
+    }
+  };
+
+  const handleToggleCopyPrice = (checked: boolean) => {
+    setCopyPriceToAll(checked);
+    if (checked && variantRows.length > 0) {
+      const firstPrice = variantRows[0].selling_price || 0;
+      setVariantRows(prev => prev.map(r => ({ ...r, selling_price: firstPrice })));
+    }
+  };
+
   const handleAddRowWithSize = (sizeName: string) => {
     const rev = getReverseDate();
     const b = bundleNumber.trim() || '1';
     const startSerial = getNextSerialForBundle(variants, rev, b);
     setVariantRows(prev => {
       const newIndex = prev.length;
+      const firstCost = prev.length > 0 ? (prev[0].purchase_price || 0) : 0;
+      const firstPrice = prev.length > 0 ? (prev[0].selling_price || 0) : 0;
       return [
         ...prev,
         {
@@ -658,9 +680,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           color: '',
           barcode: `${rev}-${b}-${startSerial + newIndex}`,
           sku: '',
-          purchase_price: 0,
-          selling_price: 0,
-          stock_quantity: 0,
+          purchase_price: copyCostToAll ? firstCost : 0,
+          selling_price: copyPriceToAll ? firstPrice : 0,
+          stock_quantity: 1,
           min_stock_level: 5
         }
       ];
@@ -685,12 +707,21 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   const handleUpdateRow = (tempId: string, field: keyof VariantRowDraft, value: any) => {
-    setVariantRows(prev => prev.map(r => {
-      if (r.tempId === tempId) {
-        return { ...r, [field]: value };
-      }
-      return r;
-    }));
+    setVariantRows(prev => {
+      const isFirstRow = prev.length > 0 && prev[0].tempId === tempId;
+      return prev.map(r => {
+        if (r.tempId === tempId) {
+          return { ...r, [field]: value };
+        }
+        if (isFirstRow && field === 'purchase_price' && copyCostToAll) {
+          return { ...r, purchase_price: value };
+        }
+        if (isFirstRow && field === 'selling_price' && copyPriceToAll) {
+          return { ...r, selling_price: value };
+        }
+        return r;
+      });
+    });
   };
 
   const handleCreateBatchVariants = async (e: React.FormEvent) => {
@@ -1475,14 +1506,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'visible', width: '100%', boxSizing: 'border-box' }}>
                 <table style={{ width: '100%', tableLayout: 'fixed', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
                   <colgroup>
-                    <col style={{ width: '36px' }} />
-                    <col style={{ width: '95px' }} />
-                    <col style={{ width: '135px' }} />
-                    <col style={{ width: '185px' }} />
-                    <col style={{ width: '95px' }} />
-                    <col style={{ width: '105px' }} />
-                    <col style={{ width: '85px' }} />
-                    <col style={{ width: '38px' }} />
+                    <col style={{ width: '32px' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '130px' }} />
+                    <col style={{ width: '170px' }} />
+                    <col style={{ width: '110px' }} />
+                    <col style={{ width: '120px' }} />
+                    <col style={{ width: '75px' }} />
+                    <col style={{ width: '35px' }} />
                   </colgroup>
                   <thead style={{ backgroundColor: '#f1f5f9' }}>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -1490,8 +1521,34 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Size *</th>
                       <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Color *</th>
                       <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Barcode *</th>
-                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Cost (৳)</th>
-                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Price (৳) *</th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                          <span>Cost (৳)</span>
+                          <label title="Copy Row #1 Cost to all below rows" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '10.5px', color: 'var(--color-primary)', fontWeight: 700, margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={copyCostToAll}
+                              onChange={e => handleToggleCopyCost(e.target.checked)}
+                              style={{ cursor: 'pointer', margin: 0 }}
+                            />
+                            <span>All</span>
+                          </label>
+                        </div>
+                      </th>
+                      <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                          <span>Price (৳) *</span>
+                          <label title="Copy Row #1 Price to all below rows" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '10.5px', color: 'var(--color-primary)', fontWeight: 700, margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={copyPriceToAll}
+                              onChange={e => handleToggleCopyPrice(e.target.checked)}
+                              style={{ cursor: 'pointer', margin: 0 }}
+                            />
+                            <span>All</span>
+                          </label>
+                        </div>
+                      </th>
                       <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Stock</th>
                       <th style={{ textAlign: 'center', padding: '6px 4px' }}></th>
                     </tr>
