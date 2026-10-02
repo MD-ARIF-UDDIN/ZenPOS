@@ -68,10 +68,13 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
       iframe = document.createElement('iframe');
       iframe.id = 'barcode-isolated-print-frame';
       iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
+      iframe.style.top = '0';
+      iframe.style.left = '0';
+      iframe.style.width = '100vw';
+      iframe.style.height = '100vh';
+      iframe.style.zIndex = '-99999';
+      iframe.style.opacity = '0';
+      iframe.style.pointerEvents = 'none';
       iframe.style.border = '0';
       document.body.appendChild(iframe);
     }
@@ -82,66 +85,84 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
     const width = CONFIG.printWidth;
     const height = CONFIG.printHeight;
 
-    const stickerItemsHtml = Array.from({ length: copies }).map((_, idx) => {
-      const svgEl = barcodeRefs.current[idx];
-      const svgHtml = svgEl ? svgEl.outerHTML : '';
-      return `
-        <div class="print-label">
-          <div class="print-content">
-            <!-- 1. Store Header (Top) -->
-            <div style="font-family: 'Outfit', sans-serif; font-size: ${CONFIG.storeFontSize}; font-weight: 900; letter-spacing: 0.3px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; max-width: 29mm; word-break: break-word;">
-              ${storeName}
-            </div>
-            <div style="font-size: ${CONFIG.subFontSize}; font-weight: 700; letter-spacing: 0.2px; color: #333333; text-transform: uppercase; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
-              Elegance — Mens Wear
-            </div>
+    const cleanBc = (variant.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
+    let svgHtml = '';
+    if (cleanBc) {
+      try {
+        const itemSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(itemSvg, cleanBc, {
+          format: 'CODE128',
+          width: CONFIG.barcodeWidth,
+          height: CONFIG.barcodeHeight,
+          displayValue: true,
+          fontSize: CONFIG.barcodeFontSize,
+          font: 'sans-serif',
+          fontOptions: 'bold',
+          margin: 0,
+          textMargin: 2
+        });
+        svgHtml = itemSvg.outerHTML;
+      } catch (e) {
+        console.error('Failed to generate barcode SVG', e);
+      }
+    }
 
-            <!-- 2. Product Name -->
-            <div style="font-size: ${CONFIG.prodFontSize}; font-weight: 800; color: #000000; margin: 1.5px auto 0 auto; width: 100%; max-width: 29mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-              ${productName}
-            </div>
-
-            <!-- 2b. Product Code / SKU (no label) -->
-            ${variant.sku ? `
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: ${CONFIG.skuFontSize}; font-weight: 800; color: #111111; margin: 0.8px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.3px; line-height: 1.15;">
-                ${variant.sku}
-              </div>
-            ` : ''}
-
-            <!-- 3. Size & Color Spec -->
-            <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
-              ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
-            </div>
-
-            <!-- 4. Barcode SVG (Center) -->
-            <div style="margin: 1.5px auto; width: 100%; max-width: 29mm; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
-              ${svgHtml}
-            </div>
-
-            <!-- 5. Price Tag (Bottom) -->
-            ${showPrice ? `
-              <div style="border-top: 1px dashed #222222; width: 100%; max-width: 29mm; padding-top: 1.5px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
-                ${hasDiscount ? `
-                  <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
-                    <span style="font-size: ${CONFIG.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
-                      ৳${variant.selling_price.toFixed(0)}
-                    </span>
-                    <span style="font-size: ${CONFIG.offerFontSize}; font-weight: 900; color: #000000;">
-                      ৳${discountPrice.toFixed(0)}
-                    </span>
-                  </div>
-                  ${promoBadge ? `<div style="font-size: ${CONFIG.subFontSize}; font-weight: 800; border: 1px solid #000; padding: 0 3px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 1px;">${promoBadge}</div>` : ''}
-                ` : `
-                  <div style="font-size: ${CONFIG.priceFontSize}; font-weight: 900; color: #000000; letter-spacing: 0.3px; line-height: 1.1; text-align: center; width: 100%;">
-                    MRP: ৳${variant.selling_price.toFixed(2)}
-                  </div>
-                `}
-              </div>
-            ` : ''}
+    const stickerItemsHtml = Array.from({ length: copies }).map(() => `
+      <div class="print-label">
+        <div class="print-content">
+          <!-- 1. Store Header (Top) -->
+          <div style="font-family: 'Outfit', sans-serif; font-size: ${CONFIG.storeFontSize}; font-weight: 900; letter-spacing: 0.3px; color: #000000; text-transform: uppercase; line-height: 1.1; margin: 0 auto; text-align: center; width: 100%; max-width: 29mm; word-break: break-word;">
+            ${storeName}
           </div>
+          <div style="font-size: ${CONFIG.subFontSize}; font-weight: 700; letter-spacing: 0.2px; color: #333333; text-transform: uppercase; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
+            Elegance — Mens Wear
+          </div>
+
+          <!-- 2. Product Name -->
+          <div style="font-size: ${CONFIG.prodFontSize}; font-weight: 800; color: #000000; margin: 1.5px auto 0 auto; width: 100%; max-width: 29mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+            ${productName}
+          </div>
+
+          <!-- 2b. Product Code / SKU (no label) -->
+          ${variant.sku ? `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: ${CONFIG.skuFontSize}; font-weight: 800; color: #111111; margin: 0.8px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.3px; line-height: 1.15;">
+              ${variant.sku}
+            </div>
+          ` : ''}
+
+          <!-- 3. Size & Color Spec -->
+          <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
+            ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
+          </div>
+
+          <!-- 4. Barcode SVG (Center) -->
+          <div style="margin: 1.5px auto; width: 100%; max-width: 29mm; display: flex; justify-content: center; align-items: center; text-align: center; overflow: hidden;">
+            ${svgHtml}
+          </div>
+
+          <!-- 5. Price Tag (Bottom) -->
+          ${showPrice ? `
+            <div style="border-top: 1px dashed #222222; width: 100%; max-width: 29mm; padding-top: 1.5px; margin: 1px auto 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+              ${hasDiscount ? `
+                <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
+                  <span style="font-size: ${CONFIG.specFontSize}; font-weight: 700; color: #555555; text-decoration: line-through;">
+                    ৳${variant.selling_price.toFixed(0)}
+                  </span>
+                  <span style="font-size: ${CONFIG.offerFontSize}; font-weight: 900; color: #000000;">
+                    ৳${discountPrice.toFixed(0)}
+                  </span>
+                </div>
+                ${promoBadge ? `<div style="font-size: ${CONFIG.subFontSize}; font-weight: 800; border: 1px solid #000; padding: 0 3px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 1px;">${promoBadge}</div>` : ''}
+              ` : `
+                <div style="font-size: ${CONFIG.priceFontSize}; font-weight: 900; color: #000000; letter-spacing: 0.3px; line-height: 1.1; text-align: center; width: 100%;">
+                  MRP: ৳${variant.selling_price.toFixed(2)}
+                </div>
+              `}
+            </div>
+          ` : ''}
         </div>
-      `;
-    }).join('');
+      </div>
+    `).join('');
 
     doc.open();
     doc.write(`
@@ -178,6 +199,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               text-align: center !important;
             }
             .print-label {
+              display: block !important;
               position: relative !important;
               width: ${width} !important;
               height: ${height} !important;
@@ -207,8 +229,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               overflow: hidden !important;
             }
             .print-label:last-child {
-              page-break-after: avoid !important;
-              break-after: avoid !important;
+              page-break-after: auto !important;
+              break-after: auto !important;
             }
             svg {
               max-width: 23mm !important;
@@ -238,7 +260,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
     setTimeout(() => {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
-    }, 250);
+    }, 350);
   };
 
   return (
@@ -612,10 +634,13 @@ export const printVariantsBatchLabels = (
     iframe = document.createElement('iframe');
     iframe.id = 'barcode-isolated-print-frame';
     iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
+    iframe.style.top = '0';
+    iframe.style.left = '0';
+    iframe.style.width = '100vw';
+    iframe.style.height = '100vh';
+    iframe.style.zIndex = '-99999';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
     iframe.style.border = '0';
     document.body.appendChild(iframe);
   }
@@ -758,8 +783,8 @@ export const printVariantsBatchLabels = (
             overflow: hidden !important;
           }
           .print-label:last-child {
-            page-break-after: avoid !important;
-            break-after: avoid !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
           svg {
             max-width: 23mm !important;
