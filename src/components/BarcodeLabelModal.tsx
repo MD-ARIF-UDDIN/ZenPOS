@@ -21,12 +21,12 @@ const CONFIG = {
   storeFontSize: '10.5px',
   subFontSize: '7px',
   prodFontSize: '9px',
-  specFontSize: '8px',
+  specFontSize: '10px',
   priceFontSize: '11px',
   offerFontSize: '11.5px',
   barcodeWidth: 0.95,
-  barcodeHeight: 17,
-  barcodeFontSize: 8.5
+  barcodeHeight: 16.5,
+  barcodeFontSize: 10.5
 };
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
@@ -100,8 +100,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             </div>
 
             <!-- 3. Size & Color Spec -->
-            <div style="font-size: ${CONFIG.specFontSize}; color: #111111; font-weight: 700; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
-              ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color ? ` • ${variant.color}` : ''}
+            <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
+              ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
             </div>
 
             <!-- 4. Barcode SVG (Center) -->
@@ -460,14 +460,14 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   {/* 3. Variant Specs */}
                   <div style={{
                     fontSize: CONFIG.specFontSize,
-                    color: '#334155',
-                    fontWeight: 700,
+                    color: '#0f172a',
+                    fontWeight: 800,
                     marginTop: '1px',
-                    lineHeight: 1,
+                    lineHeight: 1.1,
                     width: '100%',
                     textAlign: 'center'
                   }}>
-                    {variant.size && `Size: ${variant.size}`} {variant.color && ` • ${variant.color}`}
+                    {variant.size && `Size: ${variant.size}`} {variant.color && variant.color !== 'None' && ` • ${variant.color}`}
                   </div>
 
                   {/* 4. High Quality SVG Barcode */}
@@ -636,7 +636,7 @@ export const printVariantsBatchLabels = (
           </div>
 
           <!-- 3. Size & Color Spec -->
-          <div style="font-size: ${CONFIG.specFontSize}; color: #111111; font-weight: 700; line-height: 1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
+          <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
             ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
           </div>
 
