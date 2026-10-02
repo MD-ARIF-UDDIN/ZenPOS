@@ -30,11 +30,11 @@ export interface InvoiceData {
 }
 
 export interface InvoicePrintSettings {
-  paperWidth: number; // physical paper width in mm, default 58
-  leftIndent: number; // in mm, default 2.5 (safely positions content without right clipping)
-  rightInset: number; // in mm, default 2.5 (safe right buffer)
+  paperWidth: number; // physical paper roll width in mm (58mm)
+  contentWidth: number; // actual printable width in mm, default 42 (fits 100% within 384-dot printhead)
+  leftIndent: number; // in mm, default 1.0 (minimal safe left offset)
   verticalOffset: number; // in mm, e.g. 0
-  fontScale: number; // in %, e.g. 110 (balanced clear text)
+  fontScale: number; // in %, e.g. 105 (crisp readable text)
   itemSpacing: number; // in mm, e.g. 0.5
   showStoreHeader: boolean;
   storeName: string;
@@ -50,10 +50,10 @@ export interface InvoicePrintSettings {
 
 const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   paperWidth: 58,
-  leftIndent: 3.0, // Safely shifted right without exceeding printable head
-  rightInset: 2.5, // Buffer ensuring right numbers never cut
+  contentWidth: 42, // 42mm guaranteed anti-cut printable width
+  leftIndent: 1.0,
   verticalOffset: 0,
-  fontScale: 110,
+  fontScale: 105,
   itemSpacing: 0.5,
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
@@ -69,7 +69,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
-    const raw = localStorage.getItem('pos_invoice_print_settings_58mm_v9');
+    const raw = localStorage.getItem('pos_invoice_print_settings_58mm_v10');
     if (raw) {
       return { ...DEFAULT_INVOICE_SETTINGS, ...JSON.parse(raw) };
     }
@@ -93,38 +93,35 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
   const updateSettings = (partial: Partial<InvoicePrintSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
-      localStorage.setItem('pos_invoice_print_settings_58mm_v9', JSON.stringify(next));
+      localStorage.setItem('pos_invoice_print_settings_58mm_v10', JSON.stringify(next));
       return next;
     });
   };
 
   const resetSettings = () => {
     setSettings(DEFAULT_INVOICE_SETTINGS);
-    localStorage.setItem('pos_invoice_print_settings_58mm_v9', JSON.stringify(DEFAULT_INVOICE_SETTINGS));
+    localStorage.setItem('pos_invoice_print_settings_58mm_v10', JSON.stringify(DEFAULT_INVOICE_SETTINGS));
   };
 
-  const applyPreset = (preset: 'center' | 'right' | 'left' | 'large') => {
-    if (preset === 'center') {
-      updateSettings({ leftIndent: 2.5, rightInset: 2.5, fontScale: 110 });
-    } else if (preset === 'right') {
-      updateSettings({ leftIndent: 5.0, rightInset: 2.0, fontScale: 105 });
-    } else if (preset === 'left') {
-      updateSettings({ leftIndent: 0.5, rightInset: 3.5, fontScale: 110 });
-    } else if (preset === 'large') {
-      updateSettings({ leftIndent: 2.0, rightInset: 2.0, fontScale: 125 });
+  const applyPreset = (preset: 'safe42' | 'compact40' | 'standard45' | 'wide48') => {
+    if (preset === 'safe42') {
+      updateSettings({ contentWidth: 42, leftIndent: 1.0, fontScale: 105 });
+    } else if (preset === 'compact40') {
+      updateSettings({ contentWidth: 40, leftIndent: 1.0, fontScale: 100 });
+    } else if (preset === 'standard45') {
+      updateSettings({ contentWidth: 45, leftIndent: 1.0, fontScale: 110 });
+    } else if (preset === 'wide48') {
+      updateSettings({ contentWidth: 48, leftIndent: 0.5, fontScale: 115 });
     }
   };
 
-  const scale = (settings.fontScale || 110) / 100;
+  const scale = (settings.fontScale || 105) / 100;
   const baseFontSize = 11.5 * scale;
   const titleFontSize = 15.5 * scale;
   const totalFontSize = 14.5 * scale;
-  const leftIndent = settings.leftIndent !== undefined ? settings.leftIndent : 3.0;
-  const rightInset = settings.rightInset !== undefined ? settings.rightInset : 2.5;
+  const contentWidth = settings.contentWidth || 42;
+  const leftIndent = settings.leftIndent !== undefined ? settings.leftIndent : 1.0;
   const vOffset = settings.verticalOffset || 0;
-
-  // Safe container width calculated to guarantee content never spills past the 48mm printable head
-  const safeContentWidth = Math.max(38, Math.min(48, 58 - leftIndent - rightInset));
 
   const handlePrint = () => {
     let iframe = document.getElementById('invoice-isolated-print-frame') as HTMLIFrameElement;
@@ -205,11 +202,11 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               line-height: 1.25 !important;
               -webkit-font-smoothing: antialiased !important;
               text-rendering: optimizeLegibility !important;
-              overflow: visible !important;
+              overflow: hidden !important;
             }
             .receipt-container {
-              width: ${safeContentWidth}mm !important;
-              max-width: ${safeContentWidth}mm !important;
+              width: ${contentWidth}mm !important;
+              max-width: ${contentWidth}mm !important;
               margin-left: ${leftIndent}mm !important;
               margin-right: auto !important;
               padding-top: ${Math.max(1, 1.5 + vOffset)}mm !important;
@@ -272,6 +269,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             .item-row {
               display: flex !important;
               flex-direction: column !important;
+              width: 100% !important;
+              box-sizing: border-box !important;
               word-break: break-word !important;
               overflow-wrap: break-word !important;
             }
@@ -293,6 +292,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               display: flex !important;
               justify-content: space-between !important;
               align-items: center !important;
+              width: 100% !important;
+              box-sizing: border-box !important;
               font-weight: 800 !important;
               font-size: ${(baseFontSize * 0.95).toFixed(1)}px !important;
               color: #000000 !important;
@@ -457,7 +458,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               Sales Invoice Print (58mm)
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              Rongta 335A Anti-Cut Printing Engine
+              Rongta 335A Anti-Cut Printing Engine (Safe 42mm Head Width)
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -504,7 +505,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         }}>
           <AlertCircle size={14} style={{ flexShrink: 0 }} />
           <span>
-            <strong>Printer Switch Tip:</strong> In print dialog, ensure <strong>Destination: Rongta 335A</strong>, <strong>Paper: 58mm</strong>, and <strong>Margins: None (0)</strong>.
+            <strong>Printer Setting:</strong> In print dialog, ensure <strong>Destination: Rongta 335A</strong>, <strong>Paper: 58mm</strong>, and <strong>Margins: None (0)</strong>.
           </span>
         </div>
 
@@ -538,7 +539,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     cursor: 'pointer'
                   }}
                 >
-                  <Sliders size={11} style={{ display: 'inline', marginRight: '3px' }} /> Alignment & Shift
+                  <Sliders size={11} style={{ display: 'inline', marginRight: '3px' }} /> Width & Alignment
                 </button>
                 <button
                   type="button"
@@ -559,29 +560,36 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 </button>
               </div>
 
-              {/* 1-Click Presets */}
+              {/* 1-Click Width Presets */}
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>Presets:</span>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>Width Presets:</span>
                 <button
                   type="button"
-                  onClick={() => applyPreset('center')}
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}
+                  onClick={() => applyPreset('safe42')}
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: contentWidth === 42 ? '#2563eb' : '#eff6ff', color: contentWidth === 42 ? '#ffffff' : '#1d4ed8', cursor: 'pointer' }}
                 >
-                  🎯 Balanced
+                  🛡️ 42mm (Anti-Cut)
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyPreset('right')}
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}
+                  onClick={() => applyPreset('compact40')}
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 40 ? '#2563eb' : '#ffffff', color: contentWidth === 40 ? '#ffffff' : '#475569', cursor: 'pointer' }}
                 >
-                  ➡️ More Right
+                  40mm
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyPreset('large')}
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}
+                  onClick={() => applyPreset('standard45')}
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 45 ? '#2563eb' : '#ffffff', color: contentWidth === 45 ? '#ffffff' : '#475569', cursor: 'pointer' }}
                 >
-                  ⚡ Extra Large
+                  45mm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('wide48')}
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 48 ? '#2563eb' : '#ffffff', color: contentWidth === 48 ? '#ffffff' : '#475569', cursor: 'pointer' }}
+                >
+                  48mm
                 </button>
                 <button
                   type="button"
@@ -596,45 +604,45 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             {activeTab === 'adjust' ? (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '10px' }}>
-                  {/* 1. Shift to Right (Left Indent) */}
+                  {/* 1. Print Width (Guarantees anti-cut) */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Shift to Right:</span>
-                      <span style={{ color: '#2563eb' }}>+{leftIndent} mm</span>
+                      <span>Print Width:</span>
+                      <span style={{ color: '#2563eb' }}>{contentWidth} mm</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <button type="button" onClick={() => updateSettings({ contentWidth: Math.max(36, contentWidth - 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>-</button>
+                      <input 
+                        type="range" 
+                        min="36" 
+                        max="50" 
+                        step="1" 
+                        value={contentWidth} 
+                        onChange={e => updateSettings({ contentWidth: parseInt(e.target.value) })}
+                        style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
+                      />
+                      <button type="button" onClick={() => updateSettings({ contentWidth: Math.min(50, contentWidth + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
+                    </div>
+                  </div>
+
+                  {/* 2. Left Margin Offset */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                      <span>Left Margin:</span>
+                      <span style={{ color: '#2563eb' }}>{leftIndent} mm</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <button type="button" onClick={() => updateSettings({ leftIndent: Math.max(0, leftIndent - 0.5) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>◀</button>
                       <input 
                         type="range" 
                         min="0" 
-                        max="10" 
+                        max="8" 
                         step="0.5" 
                         value={leftIndent} 
                         onChange={e => updateSettings({ leftIndent: parseFloat(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ leftIndent: Math.min(10, leftIndent + 0.5) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▶</button>
-                    </div>
-                  </div>
-
-                  {/* 2. Right Safety Inset (Anti-Cut Protection) */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Right Inset (Anti-Cut):</span>
-                      <span style={{ color: '#2563eb' }}>{rightInset} mm</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <button type="button" onClick={() => updateSettings({ rightInset: Math.max(0, rightInset - 0.5) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>-</button>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="8" 
-                        step="0.5" 
-                        value={rightInset} 
-                        onChange={e => updateSettings({ rightInset: parseFloat(e.target.value) })}
-                        style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
-                      />
-                      <button type="button" onClick={() => updateSettings({ rightInset: Math.min(8, rightInset + 0.5) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
+                      <button type="button" onClick={() => updateSettings({ leftIndent: Math.min(8, leftIndent + 0.5) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▶</button>
                     </div>
                   </div>
 
@@ -647,7 +655,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     <input 
                       type="range" 
                       min="85" 
-                      max="150" 
+                      max="140" 
                       step="5" 
                       value={settings.fontScale} 
                       onChange={e => updateSettings({ fontScale: parseInt(e.target.value) })}
@@ -796,15 +804,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         }}>
           {/* Simulated 58mm thermal paper roll */}
           <div style={{
-            width: `${Math.round(safeContentWidth * 4.8)}px`,
+            width: `${Math.round(contentWidth * 5.2)}px`,
             maxWidth: '260px',
             backgroundColor: '#ffffff',
             boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
             borderRadius: '4px',
             paddingTop: `${Math.max(8, 10 + vOffset * 2.8)}px`,
             paddingBottom: '12px',
-            paddingLeft: `${Math.max(6, Math.round(leftIndent * 3))}px`,
-            paddingRight: `${Math.max(6, Math.round(rightInset * 3))}px`,
+            paddingLeft: '8px',
+            paddingRight: '8px',
+            marginLeft: `${Math.round(leftIndent * 3.5)}px`,
             fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
             fontSize: `${baseFontSize}px`,
             fontWeight: 700,
