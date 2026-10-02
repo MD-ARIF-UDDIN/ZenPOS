@@ -72,7 +72,7 @@ export const SalesListView: React.FC = () => {
       color: item.variant?.color,
       sku: item.variant?.sku,
       barcode: item.variant?.barcode,
-      code: item.variant?.barcode || item.variant?.sku,
+      code: item.variant?.sku || item.variant?.barcode,
       quantity: item.quantity,
       unitPrice: item.unit_price || (item.total_price / (item.quantity || 1)),
       totalPrice: item.total_price

@@ -31,12 +31,12 @@ export interface InvoiceData {
 
 export interface InvoicePrintSettings {
   paperWidth: number; // physical paper width in mm, default 58
-  printableWidth: number; // actual printhead width in mm, default 48 (Rongta 335A standard)
-  rightMargin: number; // safe right inset in mm, default 2
+  printableWidth: number; // actual printhead width in mm, default 52 (enlarged across paper)
+  rightMargin: number; // safe right inset in mm, default 1
   horizontalOffset: number; // in mm, e.g. 0 (positive = right, negative = left)
   verticalOffset: number; // in mm, e.g. 0
-  fontScale: number; // in %, e.g. 100
-  itemSpacing: number; // in mm, e.g. 0.4
+  fontScale: number; // in %, e.g. 115 (larger text)
+  itemSpacing: number; // in mm, e.g. 0.5
   showStoreHeader: boolean;
   storeName: string;
   storeSubtitle: string;
@@ -51,12 +51,12 @@ export interface InvoicePrintSettings {
 
 const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   paperWidth: 58,
-  printableWidth: 48,
-  rightMargin: 2,
+  printableWidth: 52,
+  rightMargin: 1,
   horizontalOffset: 0,
   verticalOffset: 0,
-  fontScale: 100,
-  itemSpacing: 0.4,
+  fontScale: 115,
+  itemSpacing: 0.5,
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
   storeSubtitle: 'Elegance — Mens Wear',
@@ -71,7 +71,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
-    const raw = localStorage.getItem('pos_invoice_print_settings_58mm_v4');
+    const raw = localStorage.getItem('pos_invoice_print_settings_58mm_v5');
     if (raw) {
       return { ...DEFAULT_INVOICE_SETTINGS, ...JSON.parse(raw) };
     }
@@ -95,24 +95,24 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
   const updateSettings = (partial: Partial<InvoicePrintSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
-      localStorage.setItem('pos_invoice_print_settings_58mm_v4', JSON.stringify(next));
+      localStorage.setItem('pos_invoice_print_settings_58mm_v5', JSON.stringify(next));
       return next;
     });
   };
 
   const resetSettings = () => {
     setSettings(DEFAULT_INVOICE_SETTINGS);
-    localStorage.setItem('pos_invoice_print_settings_58mm_v4', JSON.stringify(DEFAULT_INVOICE_SETTINGS));
+    localStorage.setItem('pos_invoice_print_settings_58mm_v5', JSON.stringify(DEFAULT_INVOICE_SETTINGS));
   };
 
-  const scale = (settings.fontScale || 100) / 100;
-  const baseFontSize = 10.5 * scale;
-  const titleFontSize = 13.5 * scale;
-  const totalFontSize = 13 * scale;
+  const scale = (settings.fontScale || 115) / 100;
+  const baseFontSize = 11.5 * scale;
+  const titleFontSize = 15 * scale;
+  const totalFontSize = 14.5 * scale;
   const hOffset = settings.horizontalOffset || 0;
   const vOffset = settings.verticalOffset || 0;
-  const printableWidth = settings.printableWidth || 48;
-  const rightMargin = settings.rightMargin !== undefined ? settings.rightMargin : 2;
+  const printableWidth = settings.printableWidth || 52;
+  const rightMargin = settings.rightMargin !== undefined ? settings.rightMargin : 1;
 
   const handlePrint = () => {
     let iframe = document.getElementById('invoice-isolated-print-frame') as HTMLIFrameElement;
@@ -135,15 +135,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     if (!doc) return;
 
     const itemsHtml = data.items.map(item => {
-      const code = item.code || item.barcode || item.sku;
+      const productCode = item.sku || item.code;
       return `
         <div class="item-row" style="margin-bottom: ${settings.itemSpacing}mm;">
           <div class="item-name">
             ${item.name} ${item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
           </div>
-          ${settings.showProductCode && code ? `
-            <div class="item-code" style="font-size: ${(baseFontSize * 0.8).toFixed(1)}px; font-weight: 600;">
-              Code: ${code}
+          ${settings.showProductCode && productCode ? `
+            <div class="item-code">
+              Code: ${productCode}
             </div>
           ` : ''}
           <div class="item-details">
@@ -157,7 +157,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     const paymentsHtml = (data.paymentRows || [])
       .filter(r => r.amount > 0)
       .map(r => `
-        <div class="math-row" style="font-size: ${(baseFontSize * 0.9).toFixed(1)}px;">
+        <div class="math-row" style="font-size: ${(baseFontSize * 0.95).toFixed(1)}px;">
           <span>Paid (${r.method}):</span>
           <span>৳${r.amount.toFixed(0)}</span>
         </div>
@@ -185,18 +185,21 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               margin: 0 !important;
               padding: 0 !important;
               background: #ffffff !important;
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace, sans-serif !important;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
               color: #000000 !important;
               text-align: left !important;
               font-size: ${baseFontSize.toFixed(1)}px !important;
-              line-height: 1.15 !important;
+              font-weight: 700 !important;
+              line-height: 1.2 !important;
+              -webkit-font-smoothing: antialiased !important;
+              text-rendering: optimizeLegibility !important;
               overflow: visible !important;
             }
             .receipt-container {
               width: ${printableWidth}mm !important;
               max-width: ${printableWidth}mm !important;
               margin: 0 !important;
-              padding: 1.5mm ${rightMargin}mm 2mm 1.5mm !important;
+              padding: 1.5mm ${rightMargin}mm 2mm 1.2mm !important;
               transform: translate(${hOffset}mm, ${vOffset}mm) !important;
               box-sizing: border-box !important;
               page-break-after: avoid !important;
@@ -207,9 +210,9 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             }
             .store-header {
               text-align: center !important;
-              border-bottom: 1px dashed #000000 !important;
-              padding-bottom: 1.2mm !important;
-              margin-bottom: 1.2mm !important;
+              border-bottom: 1.5px dashed #000000 !important;
+              padding-bottom: 1.5mm !important;
+              margin-bottom: 1.5mm !important;
             }
             .store-title {
               font-size: ${titleFontSize.toFixed(1)}px !important;
@@ -218,84 +221,96 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               letter-spacing: 0.5px !important;
               margin: 0 !important;
               line-height: 1.1 !important;
+              color: #000000 !important;
             }
             .store-sub {
-              font-size: ${(baseFontSize * 0.8).toFixed(1)}px !important;
-              font-weight: 700 !important;
+              font-size: ${(baseFontSize * 0.85).toFixed(1)}px !important;
+              font-weight: 800 !important;
               text-transform: uppercase !important;
               margin: 0.3mm 0 0 0 !important;
+              color: #000000 !important;
             }
             .store-contact {
-              font-size: ${(baseFontSize * 0.75).toFixed(1)}px !important;
-              font-weight: 600 !important;
-              margin: 0.2mm 0 0 0 !important;
+              font-size: ${(baseFontSize * 0.8).toFixed(1)}px !important;
+              font-weight: 700 !important;
+              margin: 0.3mm 0 0 0 !important;
+              color: #000000 !important;
             }
             .meta-section {
-              font-size: ${(baseFontSize * 0.85).toFixed(1)}px !important;
-              border-bottom: 1px dashed #000000 !important;
-              padding-bottom: 1mm !important;
-              margin-bottom: 1.2mm !important;
+              font-size: ${(baseFontSize * 0.9).toFixed(1)}px !important;
+              font-weight: 700 !important;
+              border-bottom: 1.5px dashed #000000 !important;
+              padding-bottom: 1.2mm !important;
+              margin-bottom: 1.5mm !important;
+              color: #000000 !important;
             }
             .meta-row {
               display: flex !important;
               justify-content: space-between !important;
-              margin-bottom: 0.3mm !important;
+              margin-bottom: 0.4mm !important;
             }
             .items-section {
-              border-bottom: 1px dashed #000000 !important;
-              padding-bottom: 1mm !important;
-              margin-bottom: 1.2mm !important;
+              border-bottom: 1.5px dashed #000000 !important;
+              padding-bottom: 1.2mm !important;
+              margin-bottom: 1.5mm !important;
             }
             .item-row {
               display: flex !important;
               flex-direction: column !important;
             }
             .item-name {
-              font-weight: 800 !important;
+              font-weight: 900 !important;
               word-break: break-word !important;
-              line-height: 1.15 !important;
+              line-height: 1.2 !important;
+              color: #000000 !important;
             }
             .item-code {
-              font-size: ${(baseFontSize * 0.8).toFixed(1)}px !important;
-              font-weight: 600 !important;
-              color: #222222 !important;
-              line-height: 1.1 !important;
+              font-size: ${(baseFontSize * 0.82).toFixed(1)}px !important;
+              font-weight: 800 !important;
+              color: #000000 !important;
+              letter-spacing: 0.2px !important;
+              line-height: 1.15 !important;
             }
             .item-details {
               display: flex !important;
               justify-content: space-between !important;
-              font-weight: 600 !important;
+              font-weight: 800 !important;
               font-size: ${(baseFontSize * 0.95).toFixed(1)}px !important;
+              color: #000000 !important;
             }
             .item-price {
-              font-weight: 800 !important;
+              font-weight: 900 !important;
+              color: #000000 !important;
             }
             .math-section {
               display: flex !important;
               flex-direction: column !important;
-              gap: 0.4mm !important;
+              gap: 0.5mm !important;
             }
             .math-row {
               display: flex !important;
               justify-content: space-between !important;
-              font-weight: 600 !important;
+              font-weight: 700 !important;
+              color: #000000 !important;
             }
             .total-row {
               display: flex !important;
               justify-content: space-between !important;
               font-size: ${totalFontSize.toFixed(1)}px !important;
               font-weight: 900 !important;
-              border-top: 1px solid #000000 !important;
-              padding-top: 0.8mm !important;
-              margin-top: 0.4mm !important;
+              border-top: 1.5px solid #000000 !important;
+              padding-top: 1mm !important;
+              margin-top: 0.5mm !important;
+              color: #000000 !important;
             }
             .footer-note {
               text-align: center !important;
-              font-size: ${(baseFontSize * 0.75).toFixed(1)}px !important;
-              font-weight: 700 !important;
-              margin-top: 1.5mm !important;
-              border-top: 1px dashed #000000 !important;
-              padding-top: 0.8mm !important;
+              font-size: ${(baseFontSize * 0.8).toFixed(1)}px !important;
+              font-weight: 800 !important;
+              margin-top: 2mm !important;
+              border-top: 1.5px dashed #000000 !important;
+              padding-top: 1mm !important;
+              color: #000000 !important;
             }
           </style>
         </head>
@@ -356,13 +371,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                   </div>
                 `}
                 ${data.dueAmount > 0 ? `
-                  <div class="math-row" style="font-weight: 800;">
+                  <div class="math-row" style="font-weight: 900;">
                     <span>DUE:</span>
                     <span>৳${data.dueAmount.toFixed(0)}</span>
                   </div>
                 ` : ''}
                 ${data.changeAmount > 0 ? `
-                  <div class="math-row">
+                  <div class="math-row" style="font-weight: 800;">
                     <span>Change:</span>
                     <span>৳${data.changeAmount.toFixed(0)}</span>
                   </div>
@@ -402,7 +417,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     }}>
       <div className="card" style={{
         width: '100%',
-        maxWidth: '700px',
+        maxWidth: '720px',
         maxHeight: '95vh',
         display: 'flex',
         flexDirection: 'column',
@@ -419,7 +434,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               Sales Invoice Print (58mm)
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              Optimized for <strong>Rongta 335A</strong> (48mm printable area)
+              Enlarged & Sharp High-Contrast Thermal Print • <strong>Rongta 335A</strong>
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -539,7 +554,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     </div>
                   </div>
 
-                  {/* 2. Printable Width (fixes right cut-off) */}
+                  {/* 2. Printable Width (Enlarges full width) */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                       <span>Printable Width:</span>
@@ -547,8 +562,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     </div>
                     <input 
                       type="range" 
-                      min="40" 
-                      max="54" 
+                      min="44" 
+                      max="58" 
                       step="1" 
                       value={printableWidth} 
                       onChange={e => updateSettings({ printableWidth: parseInt(e.target.value) })}
@@ -556,16 +571,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     />
                   </div>
 
-                  {/* 3. Right Safe Margin (prevents right side cutting) */}
+                  {/* 3. Right Safe Margin Inset */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Right Margin Inset:</span>
+                      <span>Right Margin:</span>
                       <span style={{ color: '#2563eb' }}>{rightMargin} mm</span>
                     </div>
                     <input 
                       type="range" 
                       min="0" 
-                      max="6" 
+                      max="5" 
                       step="0.5" 
                       value={rightMargin} 
                       onChange={e => updateSettings({ rightMargin: parseFloat(e.target.value) })}
@@ -573,7 +588,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     />
                   </div>
 
-                  {/* 4. Font Size Scale */}
+                  {/* 4. Font Size Scale (Enlarged) */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                       <span>Font Size:</span>
@@ -582,7 +597,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     <input 
                       type="range" 
                       min="80" 
-                      max="120" 
+                      max="150" 
                       step="5" 
                       value={settings.fontScale} 
                       onChange={e => updateSettings({ fontScale: parseInt(e.target.value) })}
@@ -627,7 +642,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                       onChange={e => updateSettings({ showProductCode: e.target.checked })} 
                       style={{ accentColor: '#2563eb' }}
                     />
-                    <span>Product Code</span>
+                    <span>Product Code (SKU)</span>
                   </label>
                 </div>
               </>
@@ -690,7 +705,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         {/* Live Preview of 58mm Receipt */}
         <div style={{
           flex: 1,
-          maxHeight: '420px',
+          maxHeight: '430px',
           overflowY: 'auto',
           backgroundColor: '#f1f5f9',
           borderRadius: 'var(--radius-sm)',
@@ -702,38 +717,39 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         }}>
           {/* Simulated 58mm thermal paper roll */}
           <div style={{
-            width: `${Math.round(printableWidth * 4.5)}px`,
-            maxWidth: '250px',
+            width: `${Math.round(printableWidth * 4.6)}px`,
+            maxWidth: '260px',
             backgroundColor: '#ffffff',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
             borderRadius: '4px',
-            padding: `10px ${Math.max(6, Math.round(rightMargin * 3.8))}px 10px 8px`,
-            fontFamily: 'monospace, sans-serif',
+            padding: `10px ${Math.max(4, Math.round(rightMargin * 3.8))}px 10px 8px`,
+            fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
             fontSize: `${baseFontSize}px`,
-            lineHeight: 1.15,
+            fontWeight: 700,
+            lineHeight: 1.2,
             color: '#000000',
             transform: `translate(${hOffset * 2.8}px, ${vOffset * 2.8}px)`,
             boxSizing: 'border-box'
           }}>
             {/* Store Header */}
             {settings.showStoreHeader && (
-              <div style={{ textAlign: 'center', borderBottom: '1px dashed #94a3b8', paddingBottom: '4px', marginBottom: '4px' }}>
-                <div style={{ fontSize: `${titleFontSize}px`, fontWeight: 900, textTransform: 'uppercase' }}>{settings.storeName || 'RAJMAHAL'}</div>
+              <div style={{ textAlign: 'center', borderBottom: '1.5px dashed #000000', paddingBottom: '5px', marginBottom: '5px' }}>
+                <div style={{ fontSize: `${titleFontSize}px`, fontWeight: 900, textTransform: 'uppercase', color: '#000000' }}>{settings.storeName || 'RAJMAHAL'}</div>
                 {settings.storeSubtitle && (
-                  <div style={{ fontSize: `${baseFontSize * 0.8}px`, fontWeight: 700, textTransform: 'uppercase', color: '#475569' }}>{settings.storeSubtitle}</div>
+                  <div style={{ fontSize: `${baseFontSize * 0.85}px`, fontWeight: 800, textTransform: 'uppercase', color: '#000000' }}>{settings.storeSubtitle}</div>
                 )}
                 {settings.storeAddress && (
-                  <div style={{ fontSize: `${baseFontSize * 0.75}px`, color: '#64748b' }}>{settings.storeAddress}</div>
+                  <div style={{ fontSize: `${baseFontSize * 0.8}px`, fontWeight: 700, color: '#000000' }}>{settings.storeAddress}</div>
                 )}
                 {settings.storePhone && (
-                  <div style={{ fontSize: `${baseFontSize * 0.75}px`, color: '#64748b' }}>Phone: {settings.storePhone}</div>
+                  <div style={{ fontSize: `${baseFontSize * 0.8}px`, fontWeight: 700, color: '#000000' }}>Phone: {settings.storePhone}</div>
                 )}
               </div>
             )}
 
             {/* Invoice Details */}
             {settings.showInvoiceDetails && (
-              <div style={{ fontSize: `${baseFontSize * 0.85}px`, borderBottom: '1px dashed #94a3b8', paddingBottom: '4px', marginBottom: '4px' }}>
+              <div style={{ fontSize: `${baseFontSize * 0.9}px`, fontWeight: 700, borderBottom: '1.5px dashed #000000', paddingBottom: '5px', marginBottom: '5px', color: '#000000' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>INV: <strong>{data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
                   <span>{new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
@@ -748,22 +764,22 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             )}
 
             {/* Items List */}
-            <div style={{ borderBottom: '1px dashed #94a3b8', paddingBottom: '4px', marginBottom: '4px' }}>
+            <div style={{ borderBottom: '1.5px dashed #000000', paddingBottom: '5px', marginBottom: '5px' }}>
               {data.items.map((item, idx) => {
-                const code = item.code || item.barcode || item.sku;
+                const productCode = item.sku || item.code;
                 return (
                   <div key={idx} style={{ marginBottom: `${settings.itemSpacing * 3.5}px` }}>
-                    <div style={{ fontWeight: 800, wordBreak: 'break-word' }}>
+                    <div style={{ fontWeight: 900, wordBreak: 'break-word', color: '#000000' }}>
                       {item.name} {item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
                     </div>
-                    {settings.showProductCode && code && (
-                      <div style={{ fontSize: `${baseFontSize * 0.8}px`, color: '#475569', fontWeight: 600 }}>
-                        Code: {code}
+                    {settings.showProductCode && productCode && (
+                      <div style={{ fontSize: `${baseFontSize * 0.82}px`, color: '#000000', fontWeight: 800, letterSpacing: '0.2px' }}>
+                        Code: {productCode}
                       </div>
                     )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: `${baseFontSize * 0.95}px` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000' }}>
                       <span>{item.quantity} × ৳${item.unitPrice.toFixed(0)}</span>
-                      <span style={{ fontWeight: 800 }}>৳${item.totalPrice.toFixed(0)}</span>
+                      <span style={{ fontWeight: 900 }}>৳${item.totalPrice.toFixed(0)}</span>
                     </div>
                   </div>
                 );
@@ -771,14 +787,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             </div>
 
             {/* Math & Total */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {data.discountAmount > 0 && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#000000' }}>
                     <span>Subtotal:</span>
                     <span>৳${data.totalAmount.toFixed(0)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: '#e11d48' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: '#000000' }}>
                     <span>Discount:</span>
                     <span>-৳${data.discountAmount.toFixed(0)}</span>
                   </div>
@@ -790,9 +806,10 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 justifyContent: 'space-between',
                 fontSize: `${totalFontSize}px`,
                 fontWeight: 900,
-                borderTop: '1px solid #000',
-                paddingTop: '3px',
-                marginTop: '1px'
+                borderTop: '1.5px solid #000000',
+                paddingTop: '4px',
+                marginTop: '2px',
+                color: '#000000'
               }}>
                 <span>TOTAL:</span>
                 <span>৳${data.payableAmount.toFixed(0)}</span>
@@ -801,25 +818,25 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               {settings.showPaymentBreakdown && (
                 <>
                   {(data.paymentRows || []).filter(r => r.amount > 0).map((r, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: `${baseFontSize * 0.9}px`, color: '#334155' }}>
-                      <span>Paid ({r.method}):</span>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: `${baseFontSize * 0.95}px`, fontWeight: 700, color: '#000000' }}>
+                      <span>Paid (${r.method}):</span>
                       <span>৳${r.amount.toFixed(0)}</span>
                     </div>
                   ))}
                   {(!data.paymentRows || data.paymentRows.length === 0) && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: `${baseFontSize * 0.9}px`, color: '#334155' }}>
-                      <span>Paid ({data.paymentMethod}):</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: `${baseFontSize * 0.95}px`, fontWeight: 700, color: '#000000' }}>
+                      <span>Paid (${data.paymentMethod}):</span>
                       <span>৳${data.receivedAmount.toFixed(0)}</span>
                     </div>
                   )}
                   {data.dueAmount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: '#e11d48' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, color: '#000000' }}>
                       <span>DUE:</span>
                       <span>৳${data.dueAmount.toFixed(0)}</span>
                     </div>
                   )}
                   {data.changeAmount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontWeight: 700 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#000000', fontWeight: 800 }}>
                       <span>Change:</span>
                       <span>৳${data.changeAmount.toFixed(0)}</span>
                     </div>
@@ -828,7 +845,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               )}
             </div>
 
-            <div style={{ textAlign: 'center', fontSize: `${baseFontSize * 0.75}px`, fontWeight: 700, color: '#64748b', marginTop: '6px', borderTop: '1px dashed #94a3b8', paddingTop: '3px' }}>
+            <div style={{ textAlign: 'center', fontSize: `${baseFontSize * 0.8}px`, fontWeight: 800, color: '#000000', marginTop: '8px', borderTop: '1.5px dashed #000000', paddingTop: '4px' }}>
               {settings.footerText || 'Thank You! • Visit Again'}
             </div>
           </div>
