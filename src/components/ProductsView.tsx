@@ -26,11 +26,18 @@ const getNextSerialForBundle = (
   bundleNo: string | number
 ): number => {
   const b = (bundleNo?.toString().trim()) || '1';
-  const prefix = `${reverseDate}-${b}-`;
+  const prefixNoHyphen = `${reverseDate}${b}`;
+  const prefixHyphen = `${reverseDate}-${b}-`;
   let maxSerial = 0;
   for (const v of variantsList) {
-    if (v.barcode && v.barcode.startsWith(prefix)) {
-      const serialPart = v.barcode.substring(prefix.length);
+    if (v.barcode) {
+      const bc = v.barcode.trim();
+      let serialPart = '';
+      if (bc.startsWith(prefixNoHyphen)) {
+        serialPart = bc.substring(prefixNoHyphen.length);
+      } else if (bc.startsWith(prefixHyphen)) {
+        serialPart = bc.substring(prefixHyphen.length);
+      }
       const parsed = parseInt(serialPart, 10);
       if (!isNaN(parsed) && parsed > maxSerial) {
         maxSerial = parsed;
@@ -626,7 +633,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         tempId: Math.random().toString(36).substring(2, 9),
         size: 'M',
         color: '',
-        barcode: `${rev}-${defaultBundle}-${startSerial}`,
+        barcode: `${rev}${defaultBundle}${startSerial}`,
         sku: '',
         purchase_price: 0,
         selling_price: 0,
@@ -644,7 +651,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     const startSerial = getNextSerialForBundle(variants, rev, b);
     setVariantRows(prev => prev.map((r, idx) => ({
       ...r,
-      barcode: `${rev}-${b}-${startSerial + idx}`
+      barcode: `${rev}${b}${startSerial + idx}`
     })));
   };
 
@@ -678,7 +685,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           tempId: Math.random().toString(36).substring(2, 9),
           size: sizeName,
           color: '',
-          barcode: `${rev}-${b}-${startSerial + newIndex}`,
+          barcode: `${rev}${b}${startSerial + newIndex}`,
           sku: '',
           purchase_price: copyCostToAll ? firstCost : 0,
           selling_price: copyPriceToAll ? firstPrice : 0,
@@ -701,7 +708,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       const filtered = prev.filter(r => r.tempId !== tempId);
       return filtered.map((r, idx) => ({
         ...r,
-        barcode: `${rev}-${b}-${startSerial + idx}`
+        barcode: `${rev}${b}${startSerial + idx}`
       }));
     });
   };
@@ -778,7 +785,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         const saved = await dbService.saveVariant({
           product_id: activeProduct.id,
           sku: generatedSku,
-          barcode: row.barcode.trim(),
+          barcode: row.barcode.trim().replace(/[^0-9a-zA-Z]/g, ''),
           size: row.size.trim(),
           color: finalColor,
           purchase_price: row.purchase_price || 0,
@@ -848,7 +855,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         id: editVariantModal.id,
         product_id: editVariantModal.product_id,
         sku: editSku.trim() || editVariantModal.sku,
-        barcode: editBarcode.trim(),
+        barcode: editBarcode.trim().replace(/[^0-9a-zA-Z]/g, ''),
         size: editSize.trim() || editVariantModal.size,
         color: editColor.trim() || editVariantModal.color,
         purchase_price: Math.max(0, Number(editCostPrice) || 0),

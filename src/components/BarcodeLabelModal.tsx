@@ -26,7 +26,7 @@ const CONFIG = {
   offerFontSize: '11.5px',
   barcodeWidth: 0.95,
   barcodeHeight: 16.5,
-  barcodeFontSize: 14
+  barcodeFontSize: 16
 };
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
@@ -40,18 +40,19 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
   useEffect(() => {
     barcodeRefs.current.forEach((svgEl) => {
-      if (svgEl && variant.barcode) {
+      const cleanBc = (variant.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
+      if (svgEl && cleanBc) {
         try {
-          JsBarcode(svgEl, variant.barcode, {
+          JsBarcode(svgEl, cleanBc, {
             format: 'CODE128',
             width: CONFIG.barcodeWidth,
             height: CONFIG.barcodeHeight,
             displayValue: true,
             fontSize: CONFIG.barcodeFontSize,
-            font: 'monospace',
+            font: 'sans-serif',
             fontOptions: 'bold',
             margin: 0,
-            textMargin: 1
+            textMargin: 2
           });
         } catch (e) {
           console.error('Failed to generate barcode SVG', e);
@@ -209,10 +210,10 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               text-align: center !important;
             }
             svg text {
-              font-weight: 900 !important;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
+              font-weight: 800 !important;
               fill: #000000 !important;
-              stroke: #000000 !important;
-              stroke-width: 0.3px !important;
+              letter-spacing: 0.4px !important;
             }
           </style>
         </head>
@@ -605,18 +606,19 @@ export const printVariantsBatchLabels = (
 
   const stickerItemsHtml = items.flatMap(({ variant, productName, copies = 1 }) => {
     let svgHtml = '';
-    if (variant.barcode) {
+    const cleanBc = (variant.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
+    if (cleanBc) {
       try {
-        JsBarcode(tempSvg, variant.barcode, {
+        JsBarcode(tempSvg, cleanBc, {
           format: 'CODE128',
           width: CONFIG.barcodeWidth,
           height: CONFIG.barcodeHeight,
           displayValue: true,
           fontSize: CONFIG.barcodeFontSize,
-          font: 'monospace',
+          font: 'sans-serif',
           fontOptions: 'bold',
           margin: 0,
-          textMargin: 1
+          textMargin: 2
         });
         svgHtml = tempSvg.outerHTML;
       } catch (e) {
@@ -737,10 +739,10 @@ export const printVariantsBatchLabels = (
             text-align: center !important;
           }
           svg text {
-            font-weight: 900 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif !important;
+            font-weight: 800 !important;
             fill: #000000 !important;
-            stroke: #000000 !important;
-            stroke-width: 0.3px !important;
+            letter-spacing: 0.4px !important;
           }
         </style>
       </head>

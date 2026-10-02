@@ -85,7 +85,10 @@ export const dbService = {
       .from('product_variants')
       .select('*, product:products(*)');
     if (error) throw error;
-    const result = data || [];
+    const result = (data || []).map(v => ({
+      ...v,
+      barcode: (v.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '')
+    }));
     cache.variants = { data: result, timestamp: now };
     return result;
   },
@@ -93,11 +96,7 @@ export const dbService = {
   async saveVariant(variant: Omit<ProductVariant, 'id'> & { id?: string }): Promise<ProductVariant> {
     const payload = { ...variant };
     if (payload.barcode) {
-      const bc = payload.barcode.trim();
-      const match = bc.match(/^(\d{8})(\d+)$/);
-      if (match) {
-        payload.barcode = `${match[1]}-${match[2]}`;
-      }
+      payload.barcode = payload.barcode.trim().replace(/[^0-9a-zA-Z]/g, '');
     }
 
     const { data, error } = await supabase

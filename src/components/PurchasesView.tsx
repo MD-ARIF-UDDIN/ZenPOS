@@ -67,8 +67,13 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
     e.preventDefault();
     if (!scanQuery.trim()) return;
 
-    // Search exact barcode
-    const match = variants.find(v => v.barcode === scanQuery);
+    // Search exact or unhyphenated barcode
+    const qClean = scanQuery.trim().replace(/[\s-]/g, '').toLowerCase();
+    const match = variants.find(v => {
+      if (!v.barcode) return false;
+      const bc = v.barcode.trim().toLowerCase();
+      return bc === scanQuery.trim().toLowerCase() || bc.replace(/[\s-]/g, '') === qClean;
+    });
     if (match) {
       addItemToPurchase(match);
       setScanQuery('');

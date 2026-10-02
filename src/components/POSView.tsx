@@ -45,10 +45,48 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   const barcodeMap = React.useMemo(() => {
     const map = new Map<string, ProductVariant>();
     variants.forEach(v => {
-      if (v.barcode) map.set(v.barcode.trim(), v);
+      if (v.barcode) {
+        const raw = v.barcode.trim();
+        const unhyphenated = raw.replace(/[\s-]/g, '');
+        map.set(raw, v);
+        map.set(raw.toLowerCase(), v);
+        map.set(unhyphenated, v);
+        map.set(unhyphenated.toLowerCase(), v);
+      }
+      if (v.sku) {
+        map.set(v.sku.trim(), v);
+        map.set(v.sku.trim().toLowerCase(), v);
+      }
     });
     return map;
   }, [variants]);
+
+  const findMatchingVariant = (queryText: string): ProductVariant | undefined => {
+    const raw = (queryText || '').trim().replace(/[\r\n\t]/g, '');
+    if (!raw) return undefined;
+    const clean = raw.replace(/[\s-]/g, '').toLowerCase();
+
+    // 1. Direct Map lookup (O(1))
+    const fromMap = barcodeMap.get(raw) || barcodeMap.get(raw.toLowerCase()) || barcodeMap.get(clean);
+    if (fromMap) return fromMap;
+
+    // 2. Exact or stripped barcode in variants list
+    const match = variants.find(v => {
+      if (!v.barcode) return false;
+      const bc = v.barcode.trim().toLowerCase();
+      const cleanBc = bc.replace(/[\s-]/g, '');
+      return bc === raw.toLowerCase() || cleanBc === clean;
+    });
+    if (match) return match;
+
+    // 3. Exact SKU match
+    const skuMatch = variants.find(v => {
+      if (!v.sku) return false;
+      const sku = v.sku.trim().toLowerCase();
+      return sku === raw.toLowerCase() || sku.replace(/[\s-]/g, '') === clean;
+    });
+    return skuMatch;
+  };
 
   // Fast memoized search results (limit to top 15 results for ultra-fast rendering)
   const searchResults = React.useMemo(() => {
@@ -56,15 +94,17 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     if (!qTrim) return [];
     
     // Check direct barcode first
-    const exact = barcodeMap.get(qTrim);
+    const exact = findMatchingVariant(qTrim);
     if (exact) return [exact];
 
     const q = qTrim.toLowerCase();
+    const cleanQ = q.replace(/[\s-]/g, '');
     const matches: ProductVariant[] = [];
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
       if (
-        (v.sku && v.sku.toLowerCase().includes(q)) ||
+        (v.sku && (v.sku.toLowerCase().includes(q) || v.sku.toLowerCase().replace(/[\s-]/g, '').includes(cleanQ))) ||
+        (v.barcode && (v.barcode.toLowerCase().includes(q) || v.barcode.toLowerCase().replace(/[\s-]/g, '').includes(cleanQ))) ||
         (v.product?.name && v.product.name.toLowerCase().includes(q))
       ) {
         matches.push(v);
@@ -120,7 +160,10 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     }
     addToCart(variant);
     setSearchQuery('');
-    setTimeout(() => searchInputRef.current?.focus(), 50);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = '';
+    }
+    setTimeout(() => searchInputRef.current?.focus(), 10);
   };
 
   const [autoPrint, setAutoPrint] = useState<boolean>(() => {
@@ -219,9 +262,11 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
       }
 
       if (e.key === 'Enter') {
-        const barcodeToMatch = scanBuffer.trim();
-        if (barcodeToMatch.length >= 2) {
-          const match = barcodeMap.get(barcodeToMatch) || variants.find(v => v.barcode === barcodeToMatch);
+        const rawBuffer = scanBuffer.trim();
+        const liveInputVal = searchInputRef.current?.value?.trim() || '';
+        const candidate = rawBuffer.length >= 4 ? rawBuffer : liveInputVal;
+        if (candidate.length >= 2) {
+          const match = findMatchingVariant(candidate);
           if (match) {
             e.preventDefault();
             addItemToCart(match);
@@ -247,15 +292,16 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   // Handle barcode scanner input (which usually acts as keyboard + Enter)
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const qTrim = searchQuery.trim();
-    if (!qTrim) return;
+    const currentVal = (searchInputRef.current?.value || searchQuery).trim();
+    if (!currentVal) return;
 
-    // Search for exact barcode match in O(1) time
-    const exactMatch = barcodeMap.get(qTrim) || variants.find(v => v.barcode === qTrim);
+    const exactMatch = findMatchingVariant(currentVal);
     if (exactMatch) {
       addItemToCart(exactMatch);
     } else if (searchResults.length === 1) {
       addItemToCart(searchResults[0]);
+    } else if (searchResults.length === 0) {
+      showToast(`No product found for "${currentVal}"`, 'warning');
     }
   };
 
@@ -279,7 +325,33 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                 className="form-control"
                 placeholder="Scan barcode or type name/SKU... (Ctrl+F)"
                 value={searchQuery}
+                onInput={(e) => {
+                  const val = (e.currentTarget.value || '').trim();
+                  if (!val) return;
+                  const cleanVal = val.replace(/[^0-9a-zA-Z]/g, '');
+                  if (cleanVal.length >= 4) {
+                    const match = findMatchingVariant(cleanVal);
+                    if (match) {
+                      addItemToCart(match);
+                    }
+                  }
+                }}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const currentDomVal = (e.currentTarget.value || searchQuery).trim();
+                    if (!currentDomVal) return;
+                    const match = findMatchingVariant(currentDomVal);
+                    if (match) {
+                      addItemToCart(match);
+                    } else if (searchResults.length === 1) {
+                      addItemToCart(searchResults[0]);
+                    } else if (searchResults.length === 0) {
+                      showToast(`No product found for "${currentDomVal}"`, 'warning');
+                    }
+                  }
+                }}
                 style={{ paddingLeft: '36px', width: '100%', height: '38px', fontSize: '13px' }}
                 autoFocus
               />
