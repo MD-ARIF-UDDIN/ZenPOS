@@ -26,7 +26,7 @@ const CONFIG = {
   offerFontSize: '11.5px',
   barcodeWidth: 0.95,
   barcodeHeight: 16.5,
-  barcodeFontSize: 12
+  barcodeFontSize: 14
 };
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, onClose }) => {
@@ -211,6 +211,8 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             svg text {
               font-weight: 900 !important;
               fill: #000000 !important;
+              stroke: #000000 !important;
+              stroke-width: 0.3px !important;
             }
           </style>
         </head>
@@ -737,6 +739,8 @@ export const printVariantsBatchLabels = (
           svg text {
             font-weight: 900 !important;
             fill: #000000 !important;
+            stroke: #000000 !important;
+            stroke-width: 0.3px !important;
           }
         </style>
       </head>
