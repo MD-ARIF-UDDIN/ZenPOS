@@ -24,8 +24,8 @@ const CONFIG = {
   specFontSize: '10px',
   priceFontSize: '11px',
   offerFontSize: '11.5px',
-  barcodeWidth: 0.95,
-  barcodeHeight: 16.5,
+  barcodeWidth: 1.25,
+  barcodeHeight: 20,
   barcodeFontSize: 16
 };
 
@@ -99,6 +99,13 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             <div style="font-size: ${CONFIG.prodFontSize}; font-weight: 800; color: #000000; margin: 1.5px auto 0 auto; width: 100%; max-width: 29mm; line-height: 1.15; text-align: center; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
               ${productName}
             </div>
+
+            <!-- 2b. Product Code / SKU (no label) -->
+            ${variant.sku ? `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif; font-size: 8px; font-weight: 700; color: #222222; margin: 0.5px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.2px;">
+                ${variant.sku}
+              </div>
+            ` : ''}
 
             <!-- 3. Size & Color Spec -->
             <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
@@ -202,7 +209,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
               break-after: auto !important;
             }
             svg {
-              max-width: 27mm !important;
+              max-width: 28.5mm !important;
               width: 100% !important;
               height: auto !important;
               display: block !important;
@@ -464,6 +471,21 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                     {productName}
                   </div>
 
+                  {/* 2b. Product Code / SKU (no label) */}
+                  {variant.sku && (
+                    <div style={{
+                      fontSize: '8px',
+                      fontWeight: 700,
+                      color: '#475569',
+                      marginTop: '0.5px',
+                      textAlign: 'center',
+                      width: '100%',
+                      letterSpacing: '0.2px'
+                    }}>
+                      {variant.sku}
+                    </div>
+                  )}
+
                   {/* 3. Variant Specs */}
                   <div style={{
                     fontSize: CONFIG.specFontSize,
@@ -643,6 +665,13 @@ export const printVariantsBatchLabels = (
             ${productName}
           </div>
 
+          <!-- 2b. Product Code / SKU (no label) -->
+          ${variant.sku ? `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Outfit', sans-serif; font-size: 8px; font-weight: 700; color: #222222; margin: 0.5px auto 0 auto; text-align: center; width: 100%; max-width: 29mm; letter-spacing: 0.2px;">
+              ${variant.sku}
+            </div>
+          ` : ''}
+
           <!-- 3. Size & Color Spec -->
           <div style="font-size: ${CONFIG.specFontSize}; color: #000000; font-weight: 800; line-height: 1.1; margin: 1px auto 0 auto; text-align: center; width: 100%; max-width: 29mm;">
             ${variant.size ? `Size: ${variant.size}` : ''} ${variant.color && variant.color !== 'None' ? ` • ${variant.color}` : ''}
@@ -731,7 +760,7 @@ export const printVariantsBatchLabels = (
             break-after: auto !important;
           }
           svg {
-            max-width: 27mm !important;
+            max-width: 28.5mm !important;
             width: 100% !important;
             height: auto !important;
             display: block !important;

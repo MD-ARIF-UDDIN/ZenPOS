@@ -11,40 +11,39 @@ interface ProductsViewProps {
   onRefreshStats: () => void;
 }
 
-const getReverseDate = (): string => {
-  const now = new Date();
-  const year = now.getFullYear().toString();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${year}${month}${day}`; // e.g. "20261002"
-  return todayStr.split('').reverse().join(''); // e.g. "20016202"
-};
-
-const getNextSerialForBundle = (
-  variantsList: { barcode?: string }[],
-  reverseDate: string,
-  bundleNo: string | number
-): number => {
-  const b = (bundleNo?.toString().trim()) || '1';
-  const prefixNoHyphen = `${reverseDate}${b}`;
-  const prefixHyphen = `${reverseDate}-${b}-`;
-  let maxSerial = 0;
+const getNextGlobalBarcode = (variantsList: { barcode?: string }[], offset = 0): string => {
+  let maxNum = 0;
   for (const v of variantsList) {
     if (v.barcode) {
-      const bc = v.barcode.trim();
-      let serialPart = '';
-      if (bc.startsWith(prefixNoHyphen)) {
-        serialPart = bc.substring(prefixNoHyphen.length);
-      } else if (bc.startsWith(prefixHyphen)) {
-        serialPart = bc.substring(prefixHyphen.length);
-      }
-      const parsed = parseInt(serialPart, 10);
-      if (!isNaN(parsed) && parsed > maxSerial) {
-        maxSerial = parsed;
+      const clean = v.barcode.replace(/[^0-9]/g, '');
+      if (clean && clean.length <= 8) {
+        const parsed = parseInt(clean, 10);
+        if (!isNaN(parsed) && parsed > maxNum) {
+          maxNum = parsed;
+        }
       }
     }
   }
-  return maxSerial + 1;
+  const nextVal = maxNum + 1 + offset;
+  return String(nextVal).padStart(6, '0');
+};
+
+const generateVariantSku = (
+  productName: string,
+  color: string,
+  size: string,
+  bundleNumber: string | number,
+  serialNumber: number | string
+): string => {
+  const prodClean = (productName || 'PRD').replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'PRD';
+  const colorClean = (color && color.trim() !== 'None' && color.trim() !== '') 
+    ? (color.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'STD')
+    : 'STD';
+  const sizeClean = (size || 'M').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'M';
+  const bundle = (bundleNumber?.toString().trim()) || '1';
+  const year2Digits = new Date().getFullYear().toString().slice(-2);
+  const serial = typeof serialNumber === 'number' ? String(serialNumber).padStart(2, '0') : String(serialNumber || '01').padStart(2, '0');
+  return `${prodClean}-${colorClean}-${sizeClean}-${bundle}-${year2Digits}-${serial}`;
 };
 
 const GENTS_CATEGORIES: string[] = [
@@ -621,20 +620,23 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
 
   const handleOpenAddVariant = () => {
-    const rev = getReverseDate();
     const defaultBundle = '1';
     setBundleNumber(defaultBundle);
     setCopyCostToAll(false);
     setCopyPriceToAll(false);
 
-    const startSerial = getNextSerialForBundle(variants, rev, defaultBundle);
+    const initialBarcode = getNextGlobalBarcode(variants, 0);
+    const initialSku = activeProduct
+      ? generateVariantSku(activeProduct.name, '', 'M', defaultBundle, 1)
+      : '';
+
     setVariantRows([
       {
         tempId: Math.random().toString(36).substring(2, 9),
         size: 'M',
         color: '',
-        barcode: `${rev}${defaultBundle}${startSerial}`,
-        sku: '',
+        barcode: initialBarcode,
+        sku: initialSku,
         purchase_price: 0,
         selling_price: 0,
         stock_quantity: 1,
@@ -646,12 +648,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
   const handleBundleNumberChange = (newBundle: string) => {
     setBundleNumber(newBundle);
-    const rev = getReverseDate();
-    const b = newBundle.trim() || '1';
-    const startSerial = getNextSerialForBundle(variants, rev, b);
     setVariantRows(prev => prev.map((r, idx) => ({
       ...r,
-      barcode: `${rev}${b}${startSerial + idx}`
+      sku: generateVariantSku(activeProduct?.name || '', r.color, r.size, newBundle, idx + 1)
     })));
   };
 
@@ -672,21 +671,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   const handleAddRowWithSize = (sizeName: string) => {
-    const rev = getReverseDate();
-    const b = bundleNumber.trim() || '1';
-    const startSerial = getNextSerialForBundle(variants, rev, b);
     setVariantRows(prev => {
       const newIndex = prev.length;
       const firstCost = prev.length > 0 ? (prev[0].purchase_price || 0) : 0;
       const firstPrice = prev.length > 0 ? (prev[0].selling_price || 0) : 0;
+      const newBarcode = getNextGlobalBarcode(variants, newIndex);
+      const newSku = generateVariantSku(activeProduct?.name || '', '', sizeName, bundleNumber, newIndex + 1);
       return [
         ...prev,
         {
           tempId: Math.random().toString(36).substring(2, 9),
           size: sizeName,
           color: '',
-          barcode: `${rev}${b}${startSerial + newIndex}`,
-          sku: '',
+          barcode: newBarcode,
+          sku: newSku,
           purchase_price: copyCostToAll ? firstCost : 0,
           selling_price: copyPriceToAll ? firstPrice : 0,
           stock_quantity: 1,
@@ -701,14 +699,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   const handleRemoveRow = (tempId: string) => {
-    const rev = getReverseDate();
-    const b = bundleNumber.trim() || '1';
-    const startSerial = getNextSerialForBundle(variants, rev, b);
     setVariantRows(prev => {
       const filtered = prev.filter(r => r.tempId !== tempId);
       return filtered.map((r, idx) => ({
         ...r,
-        barcode: `${rev}${b}${startSerial + idx}`
+        barcode: getNextGlobalBarcode(variants, idx),
+        sku: generateVariantSku(activeProduct?.name || '', r.color, r.size, bundleNumber, idx + 1)
       }));
     });
   };
@@ -716,9 +712,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const handleUpdateRow = (tempId: string, field: keyof VariantRowDraft, value: any) => {
     setVariantRows(prev => {
       const isFirstRow = prev.length > 0 && prev[0].tempId === tempId;
-      return prev.map(r => {
+      return prev.map((r, idx) => {
         if (r.tempId === tempId) {
-          return { ...r, [field]: value };
+          const updated = { ...r, [field]: value };
+          if (field === 'size' || field === 'color') {
+            updated.sku = generateVariantSku(
+              activeProduct?.name || '',
+              field === 'color' ? value : r.color,
+              field === 'size' ? value : r.size,
+              bundleNumber,
+              idx + 1
+            );
+          }
+          return updated;
         }
         if (isFirstRow && field === 'purchase_price' && copyCostToAll) {
           return { ...r, purchase_price: value };
@@ -757,7 +763,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
 
     // Check duplicate barcodes among rows
-    const barcodesInRows = variantRows.map(r => r.barcode.trim());
+    const barcodesInRows = variantRows.map(r => r.barcode.trim().replace(/[^0-9a-zA-Z]/g, ''));
     const uniqueBarcodes = new Set(barcodesInRows);
     if (uniqueBarcodes.size !== barcodesInRows.length) {
       showToast('Duplicate barcodes detected among the rows. Each row must have a unique barcode.', 'warning');
@@ -766,8 +772,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
 
     // Check duplicate barcodes against existing DB variants
     for (const row of variantRows) {
-      const rawBc = row.barcode.trim().replace(/-/g, '');
-      const exists = variants.find(v => v.barcode && (v.barcode === row.barcode.trim() || v.barcode.replace(/-/g, '') === rawBc));
+      const rawBc = row.barcode.trim().replace(/[^0-9a-zA-Z]/g, '');
+      const exists = variants.find(v => v.barcode && v.barcode.replace(/[^0-9a-zA-Z]/g, '') === rawBc);
       if (exists) {
         showToast(`Barcode "${row.barcode}" already exists in inventory! Please regenerate.`, 'warning');
         return;
@@ -779,13 +785,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       showToast(`Creating ${variantRows.length} variant(s)...`, 'info');
 
       const createdList: ProductVariant[] = [];
-      for (const row of variantRows) {
+      for (let i = 0; i < variantRows.length; i++) {
+        const row = variantRows[i];
         const finalColor = row.color.trim() || 'None';
-        const generatedSku = row.sku || `${activeProduct.name.substring(0,3).toUpperCase()}-${finalColor.substring(0,3).toUpperCase()}-${row.size}`;
+        const finalSku = row.sku.trim() || generateVariantSku(activeProduct.name, finalColor, row.size.trim(), bundleNumber, i + 1);
+        const finalBarcode = row.barcode.trim().replace(/[^0-9a-zA-Z]/g, '');
         const saved = await dbService.saveVariant({
           product_id: activeProduct.id,
-          sku: generatedSku,
-          barcode: row.barcode.trim().replace(/[^0-9a-zA-Z]/g, ''),
+          sku: finalSku,
+          barcode: finalBarcode,
           size: row.size.trim(),
           color: finalColor,
           purchase_price: row.purchase_price || 0,

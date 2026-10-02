@@ -97,6 +97,21 @@ export const dbService = {
     const payload = { ...variant };
     if (payload.barcode) {
       payload.barcode = payload.barcode.trim().replace(/[^0-9a-zA-Z]/g, '');
+    } else if (!payload.id) {
+      const existing = await this.getVariants();
+      let maxNum = 0;
+      for (const v of existing) {
+        if (v.barcode) {
+          const clean = v.barcode.replace(/[^0-9]/g, '');
+          if (clean && clean.length <= 8) {
+            const parsed = parseInt(clean, 10);
+            if (!isNaN(parsed) && parsed > maxNum) {
+              maxNum = parsed;
+            }
+          }
+        }
+      }
+      payload.barcode = String(maxNum + 1).padStart(6, '0');
     }
 
     const { data, error } = await supabase
