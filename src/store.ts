@@ -6,6 +6,7 @@ export interface Product {
   category: string;
   brand?: string;
   description?: string;
+  rent_price?: number | null;
 }
 
 export interface ProductVariant {
@@ -17,6 +18,7 @@ export interface ProductVariant {
   color: string;
   purchase_price: number;
   selling_price: number;
+  rent_price?: number | null;
   stock_quantity: number;
   min_stock_level: number;
   product?: Product; // joined

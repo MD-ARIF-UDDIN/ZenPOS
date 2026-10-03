@@ -517,6 +517,7 @@ interface VariantRowDraft {
   sku: string;
   purchase_price: number;
   selling_price: number;
+  rent_price?: number | null;
   stock_quantity: number;
   min_stock_level: number;
 }
@@ -559,6 +560,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [variantRows, setVariantRows] = useState<VariantRowDraft[]>([]);
   const [copyCostToAll, setCopyCostToAll] = useState(false);
   const [copyPriceToAll, setCopyPriceToAll] = useState(false);
+  const [copyRentToAll, setCopyRentToAll] = useState(false);
   const [savingVariant, setSavingVariant] = useState(false);
   const [deletingVariantId, setDeletingVariantId] = useState<string | null>(null);
 
@@ -570,6 +572,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [editColor, setEditColor] = useState('');
   const [editCostPrice, setEditCostPrice] = useState<number>(0);
   const [editSellPrice, setEditSellPrice] = useState<number>(0);
+  const [editRentPrice, setEditRentPrice] = useState<number | ''>(0);
   const [editStockQty, setEditStockQty] = useState<number>(0);
   const [editMinStock, setEditMinStock] = useState<number>(5);
   const [savingEditVariant, setSavingEditVariant] = useState(false);
@@ -693,6 +696,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     setBundleNumber(targetBundle);
     setCopyCostToAll(false);
     setCopyPriceToAll(false);
+    setCopyRentToAll(false);
 
     // Calculate serial number offset for this bundle
     const variantsInBundle = productVariants.filter(v => {
@@ -707,6 +711,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       ? generateVariantSku(activeProduct.name, '', 'M', targetBundle, serialOffset)
       : '';
 
+    const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+
     setVariantRows([
       {
         tempId: Math.random().toString(36).substring(2, 9),
@@ -716,6 +722,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         sku: initialSku,
         purchase_price: 0,
         selling_price: 0,
+        rent_price: isSherwani ? 0 : null,
         stock_quantity: 1,
         min_stock_level: 5
       }
@@ -757,6 +764,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
   };
 
+  const handleToggleCopyRent = (checked: boolean) => {
+    setCopyRentToAll(checked);
+    if (checked && variantRows.length > 0) {
+      const firstRent = variantRows[0].rent_price || 0;
+      setVariantRows(prev => prev.map(r => ({ ...r, rent_price: firstRent })));
+    }
+  };
+
   const handleAddRowWithSize = (sizeName: string) => {
     setVariantRows(prev => {
       const existingDraftBarcodes = prev.map(r => r.barcode);
@@ -773,8 +788,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       const serialNumber = variantsInBundle.length + prev.length + 1;
       const newSku = generateVariantSku(activeProduct?.name || '', '', sizeName, bundleNumber, serialNumber);
 
+      const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
       const firstCost = prev.length > 0 ? (prev[0].purchase_price || 0) : 0;
       const firstPrice = prev.length > 0 ? (prev[0].selling_price || 0) : 0;
+      const firstRent = prev.length > 0 ? (prev[0].rent_price || 0) : 0;
 
       return [
         ...prev,
@@ -786,6 +803,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           sku: newSku,
           purchase_price: copyCostToAll ? firstCost : 0,
           selling_price: copyPriceToAll ? firstPrice : 0,
+          rent_price: isSherwani ? (copyRentToAll ? firstRent : 0) : null,
           stock_quantity: 1,
           min_stock_level: 5
         }
@@ -850,6 +868,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         if (isFirstRow && field === 'selling_price' && copyPriceToAll) {
           return { ...r, selling_price: value };
         }
+        if (isFirstRow && field === 'rent_price' && copyRentToAll) {
+          return { ...r, rent_price: value };
+        }
         return r;
       });
     });
@@ -862,6 +883,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       showToast('Please add at least one variant row.', 'warning');
       return;
     }
+
+    const isSherwani = (activeProduct.category || '').toLowerCase().includes('sherwani');
 
     // Validate rows
     for (let i = 0; i < variantRows.length; i++) {
@@ -876,6 +899,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       }
       if (row.selling_price <= 0) {
         showToast(`Row #${i + 1} (${row.size}) must have a valid Selling Price.`, 'warning');
+        return;
+      }
+      if (isSherwani && (row.rent_price === undefined || row.rent_price === null || Number(row.rent_price) <= 0)) {
+        showToast(`Row #${i + 1} (${row.size}) must have a valid Rent Price for Sherwani.`, 'warning');
         return;
       }
     }
@@ -932,6 +959,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           color: finalColor,
           purchase_price: row.purchase_price || 0,
           selling_price: row.selling_price,
+          rent_price: isSherwani ? Number(row.rent_price) || 0 : (row.rent_price != null ? Number(row.rent_price) : null),
           stock_quantity: Math.max(0, Number(row.stock_quantity) || 0),
           min_stock_level: row.min_stock_level || 5
         });
@@ -968,6 +996,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     setEditColor(v.color);
     setEditCostPrice(v.purchase_price ?? 0);
     setEditSellPrice(v.selling_price ?? 0);
+    setEditRentPrice(v.rent_price !== undefined && v.rent_price !== null ? v.rent_price : 0);
     setEditStockQty(v.stock_quantity ?? 0);
     setEditMinStock(v.min_stock_level ?? 5);
   };
@@ -982,6 +1011,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
     if (editSellPrice <= 0) {
       showToast('Selling price must be greater than zero.', 'warning');
+      return;
+    }
+
+    const isSherwani = (activeProduct?.category || editVariantModal.product?.category || '').toLowerCase().includes('sherwani');
+
+    if (isSherwani && (editRentPrice === '' || Number(editRentPrice) <= 0)) {
+      showToast('Rent price must be greater than zero for Sherwani.', 'warning');
       return;
     }
 
@@ -1009,6 +1045,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         color: editColor.trim() || editVariantModal.color,
         purchase_price: Math.max(0, Number(editCostPrice) || 0),
         selling_price: Number(editSellPrice),
+        rent_price: isSherwani ? Number(editRentPrice) : (editRentPrice !== '' ? Number(editRentPrice) : null),
         stock_quantity: newStock,
         min_stock_level: Math.max(0, Number(editMinStock) || 0)
       });
@@ -1213,6 +1250,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
                         {p.category || 'General'}
                       </span>
+                      {p.rent_price !== undefined && p.rent_price !== null && (
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '1px 5px', borderRadius: '4px' }}>
+                          Rent: ৳{Number(p.rent_price).toFixed(0)}
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1260,6 +1302,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
                   Category: <span style={{ color: 'var(--text-primary)' }}>{activeProduct.category || 'N/A'}</span> | 
                   Brand: <span style={{ color: 'var(--text-primary)' }}>{activeProduct.brand || 'N/A'}</span>
+                  {activeProduct.rent_price !== undefined && activeProduct.rent_price !== null && (
+                    <> | Rent Price: <span style={{ color: '#059669', fontWeight: 800 }}>৳{Number(activeProduct.rent_price).toFixed(2)}</span></>
+                  )}
                 </p>
                 {activeProduct.description && (
                   <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '6px' }}>{activeProduct.description}</p>
@@ -1312,6 +1357,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <th>Color</th>
                       <th>Cost</th>
                       <th>Price</th>
+                      {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                        <th style={{ color: '#166534', backgroundColor: '#f0fdf4' }}>Rent Price</th>
+                      )}
                       <th>Stock</th>
                       <th style={{ width: '210px', textAlign: 'center' }}>Actions</th>
                     </tr>
@@ -1319,7 +1367,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   <tbody>
                     {activeVariants.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
+                        <td colSpan={((activeProduct?.category || '').toLowerCase().includes('sherwani')) ? 10 : 9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
                           No variants defined yet. Add a size/color variant to start tracking stock & barcodes.
                         </td>
                       </tr>
@@ -1340,6 +1388,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           <td>{v.color}</td>
                           <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
                           <td>৳{(v.selling_price ?? 0).toFixed(2)}</td>
+                          {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                            <td style={{ fontWeight: 800, color: '#166534', backgroundColor: '#f0fdf4' }}>
+                              ৳{(v.rent_price ?? 0).toFixed(2)}
+                            </td>
+                          )}
                           <td>
                             <button
                               type="button"
@@ -1418,68 +1471,74 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     No variants defined yet. Add a size/color variant to start tracking stock.
                   </div>
                 ) : (
-                  paginatedVariants.map(v => (
-                    <div className="card" key={v.id} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'none' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--color-primary)' }}>{v.sku}</span>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                  paginatedVariants.map(v => {
+                    const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+                    return (
+                      <div className="card" key={v.id} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'none' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--color-primary)' }}>{v.sku}</span>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                              onClick={() => setAdjustingStockVariant(v)}
+                              title="Adjust Stock"
+                            >
+                              <Boxes size={12} /> Stock
+                            </button>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                              onClick={() => handleOpenEditVariant(v)}
+                              title="Edit Details"
+                            >
+                              <Edit3 size={12} /> Edit
+                            </button>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                              onClick={() => setBarcodeVariantModal(v)}
+                            >
+                              <Printer size={12} />
+                            </button>
+                            <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
+                              {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          <span>BC: <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{v.barcode}</span></span>
+                          <span>Size/Color: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v.size} / {v.color}</span></span>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', flexWrap: 'wrap', gap: '6px' }}>
+                          <div>Cost: <span style={{ fontWeight: 700 }}>৳{(v.purchase_price ?? 0).toFixed(2)}</span></div>
+                          <div>Price: <span style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</span></div>
+                          {isSherwani && (
+                            <div style={{ color: '#166534', fontWeight: 800 }}>Rent: ৳{(v.rent_price ?? 0).toFixed(2)}</div>
+                          )}
+                          
+                          <button
+                            type="button"
                             onClick={() => setAdjustingStockVariant(v)}
-                            title="Adjust Stock"
+                            style={{
+                              border: '1px solid #86efac',
+                              fontWeight: 800,
+                              padding: '3px 10px',
+                              borderRadius: '5px',
+                              fontSize: '11.5px',
+                              backgroundColor: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                              color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
+                              cursor: 'pointer'
+                            }}
                           >
-                            <Boxes size={12} /> Stock
-                          </button>
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                            onClick={() => handleOpenEditVariant(v)}
-                            title="Edit Details"
-                          >
-                            <Edit3 size={12} /> Edit
-                          </button>
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                            onClick={() => setBarcodeVariantModal(v)}
-                          >
-                            <Printer size={12} />
-                          </button>
-                          <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
-                            {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
+                            Stock: {v.stock_quantity}
                           </button>
                         </div>
                       </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span>BC: <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{v.barcode}</span></span>
-                        <span>Size/Color: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v.size} / {v.color}</span></span>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
-                        <div>Cost: <span style={{ fontWeight: 700 }}>৳{(v.purchase_price ?? 0).toFixed(2)}</span></div>
-                        <div>Price: <span style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</span></div>
-                        
-                        <button
-                          type="button"
-                          onClick={() => setAdjustingStockVariant(v)}
-                          style={{
-                            border: '1px solid #86efac',
-                            fontWeight: 800,
-                            padding: '3px 10px',
-                            borderRadius: '5px',
-                            fontSize: '11.5px',
-                            backgroundColor: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                            color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Stock: {v.stock_quantity}
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
                 <Pagination 
                   currentPage={varPage}
@@ -1565,6 +1624,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   <input type="text" className="form-control" value={productFormBrand} onChange={e => setProductFormBrand(e.target.value)} placeholder="e.g. Levi's" style={{ height: '38px', fontSize: '13px' }} />
                 </div>
               </div>
+
               <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Description</label>
                 <textarea className="form-control" value={productFormDesc} onChange={e => setProductFormDesc(e.target.value)} placeholder="Product description..." rows={3} style={{ height: 'auto', fontSize: '13px' }} />
@@ -1662,14 +1722,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'visible', width: '100%', boxSizing: 'border-box' }}>
                 <table style={{ width: '100%', tableLayout: 'fixed', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
                   <colgroup>
-                    <col style={{ width: '32px' }} />
-                    <col style={{ width: '90px' }} />
-                    <col style={{ width: '130px' }} />
-                    <col style={{ width: '170px' }} />
+                    <col style={{ width: '28px' }} />
+                    <col style={{ width: '85px' }} />
                     <col style={{ width: '110px' }} />
-                    <col style={{ width: '120px' }} />
-                    <col style={{ width: '75px' }} />
-                    <col style={{ width: '35px' }} />
+                    <col style={{ width: '140px' }} />
+                    <col style={{ width: '95px' }} />
+                    <col style={{ width: '100px' }} />
+                    {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                      <col style={{ width: '105px' }} />
+                    )}
+                    <col style={{ width: '65px' }} />
+                    <col style={{ width: '32px' }} />
                   </colgroup>
                   <thead style={{ backgroundColor: '#f1f5f9' }}>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -1705,6 +1768,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           </label>
                         </div>
                       </th>
+                      {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                        <th style={{ padding: '6px 8px', fontSize: '11.5px', color: '#166534', backgroundColor: '#ecfdf5' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                            <span>Rent (৳) *</span>
+                            <label title="Copy Row #1 Rent to all below rows" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '10.5px', color: '#059669', fontWeight: 700, margin: 0 }}>
+                              <input
+                                type="checkbox"
+                                checked={copyRentToAll}
+                                onChange={e => handleToggleCopyRent(e.target.checked)}
+                                style={{ cursor: 'pointer', margin: 0 }}
+                              />
+                              <span>All</span>
+                            </label>
+                          </div>
+                        </th>
+                      )}
                       <th style={{ padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>Stock</th>
                       <th style={{ textAlign: 'center', padding: '6px 4px' }}></th>
                     </tr>
@@ -1712,88 +1791,105 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   <tbody>
                     {variantRows.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                        <td colSpan={((activeProduct?.category || '').toLowerCase().includes('sherwani')) ? 9 : 8} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
                           No variants added yet. Click size buttons above or click <strong>"+"</strong> button.
                         </td>
                       </tr>
                     ) : (
-                      variantRows.map((row, idx) => (
-                        <tr key={row.tempId} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)', padding: '5px 4px' }}>
-                            {idx + 1}
-                          </td>
-                          <td style={{ position: 'relative', overflow: 'visible', padding: '5px 8px' }}>
-                            <SizeCombobox
-                              value={row.size}
-                              onChange={val => handleUpdateRow(row.tempId, 'size', val)}
-                              placeholder="Size"
-                            />
-                          </td>
-                          <td style={{ position: 'relative', overflow: 'visible', padding: '5px 8px' }}>
-                            <ColorCombobox
-                              value={row.color}
-                              onChange={val => handleUpdateRow(row.tempId, 'color', val)}
-                              placeholder="Color"
-                            />
-                          </td>
-                          <td style={{ padding: '5px 8px' }}>
-                            <input 
-                              type="text" 
-                              className="form-control" 
-                              value={row.barcode} 
-                              onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
-                              placeholder="Barcode" 
-                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '11.5px', fontFamily: 'monospace', fontWeight: 600, backgroundColor: '#f8fafc', padding: '2px 8px' }}
-                              required
-                            />
-                          </td>
-                          <td style={{ padding: '5px 8px' }}>
-                            <input 
-                              type="number" 
-                              step="0.01" 
-                              className="form-control" 
-                              value={row.purchase_price || ''} 
-                              onChange={e => handleUpdateRow(row.tempId, 'purchase_price', Number(e.target.value))}
-                              placeholder="0.00" 
-                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', padding: '2px 8px' }}
-                            />
-                          </td>
-                          <td style={{ padding: '5px 8px' }}>
-                            <input 
-                              type="number" 
-                              step="0.01" 
-                              className="form-control" 
-                              value={row.selling_price || ''} 
-                              onChange={e => handleUpdateRow(row.tempId, 'selling_price', Number(e.target.value))}
-                              placeholder="Price *" 
-                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined, padding: '2px 8px' }}
-                              required
-                            />
-                          </td>
-                          <td style={{ padding: '5px 8px' }}>
-                            <input 
-                              type="number" 
-                              min="0" 
-                              className="form-control" 
-                              value={row.stock_quantity ?? ''} 
-                              onChange={e => handleUpdateRow(row.tempId, 'stock_quantity', Number(e.target.value))}
-                              placeholder="0" 
-                              style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 700, padding: '2px 8px' }}
-                            />
-                          </td>
-                          <td style={{ textAlign: 'center', padding: '5px 4px' }}>
-                            <button
-                              type="button"
-                              className="btn-icon text-danger"
-                              onClick={() => handleRemoveRow(row.tempId)}
-                              title="Remove row"
-                              style={{ padding: '4px', cursor: 'pointer' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                      variantRows.map((row, idx) => {
+                        const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+                        return (
+                          <tr key={row.tempId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)', padding: '5px 4px' }}>
+                              {idx + 1}
+                            </td>
+                            <td style={{ position: 'relative', overflow: 'visible', padding: '5px 8px' }}>
+                              <SizeCombobox
+                                value={row.size}
+                                onChange={val => handleUpdateRow(row.tempId, 'size', val)}
+                                placeholder="Size"
+                              />
+                            </td>
+                            <td style={{ position: 'relative', overflow: 'visible', padding: '5px 8px' }}>
+                              <ColorCombobox
+                                value={row.color}
+                                onChange={val => handleUpdateRow(row.tempId, 'color', val)}
+                                placeholder="Color"
+                              />
+                            </td>
+                            <td style={{ padding: '5px 8px' }}>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={row.barcode} 
+                                onChange={e => handleUpdateRow(row.tempId, 'barcode', e.target.value)}
+                                placeholder="Barcode" 
+                                style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '11.5px', fontFamily: 'monospace', fontWeight: 600, backgroundColor: '#f8fafc', padding: '2px 8px' }}
+                                required
+                              />
+                            </td>
+                            <td style={{ padding: '5px 8px' }}>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                className="form-control" 
+                                value={row.purchase_price || ''} 
+                                onChange={e => handleUpdateRow(row.tempId, 'purchase_price', Number(e.target.value))}
+                                placeholder="0.00" 
+                                style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', padding: '2px 8px' }}
+                              />
+                            </td>
+                            <td style={{ padding: '5px 8px' }}>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                className="form-control" 
+                                value={row.selling_price || ''} 
+                                onChange={e => handleUpdateRow(row.tempId, 'selling_price', Number(e.target.value))}
+                                placeholder="Price *" 
+                                style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 700, borderColor: row.selling_price <= 0 ? '#fda4af' : undefined, padding: '2px 8px' }}
+                                required
+                              />
+                            </td>
+                            {isSherwani && (
+                              <td style={{ padding: '5px 8px', backgroundColor: '#f0fdf4' }}>
+                                <input 
+                                  type="number" 
+                                  step="0.01" 
+                                  className="form-control" 
+                                  value={row.rent_price !== undefined && row.rent_price !== null ? (row.rent_price || '') : ''} 
+                                  onChange={e => handleUpdateRow(row.tempId, 'rent_price', Number(e.target.value))}
+                                  placeholder="Rent *" 
+                                  style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 800, color: '#166534', borderColor: (row.rent_price ?? 0) <= 0 ? '#fda4af' : '#86efac', padding: '2px 8px' }}
+                                  required
+                                />
+                              </td>
+                            )}
+                            <td style={{ padding: '5px 8px' }}>
+                              <input 
+                                type="number" 
+                                min="0" 
+                                className="form-control" 
+                                value={row.stock_quantity ?? ''} 
+                                onChange={e => handleUpdateRow(row.tempId, 'stock_quantity', Number(e.target.value))}
+                                placeholder="0" 
+                                style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 700, padding: '2px 8px' }}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '5px 4px' }}>
+                              <button
+                                type="button"
+                                className="btn-icon text-danger"
+                                onClick={() => handleRemoveRow(row.tempId)}
+                                title="Remove row"
+                                style={{ padding: '4px', cursor: 'pointer' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -1912,16 +2008,33 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 600 }}>Purchase / Cost Price (৳)</label>
-                  <input type="number" step="0.01" className="form-control" value={editCostPrice} onChange={e => setEditCostPrice(Number(e.target.value))} style={{ height: '38px', fontSize: '13px' }} />
+              {((activeProduct?.category || editVariantModal.product?.category || '').toLowerCase().includes('sherwani')) ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Cost Price (৳)</label>
+                    <input type="number" step="0.01" className="form-control" value={editCostPrice} onChange={e => setEditCostPrice(Number(e.target.value))} style={{ height: '38px', fontSize: '13px' }} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Selling Price (৳) *</label>
+                    <input type="number" step="0.01" className="form-control" value={editSellPrice} onChange={e => setEditSellPrice(Number(e.target.value))} required style={{ height: '38px', fontSize: '13px', fontWeight: 700 }} />
+                  </div>
+                  <div className="form-group" style={{ backgroundColor: '#f0fdf4', padding: '4px 8px', borderRadius: '6px', border: '1.5px solid #86efac' }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '12px', color: '#166534', margin: 0 }}>Rent Price (৳) *</label>
+                    <input type="number" step="0.01" className="form-control" value={editRentPrice} onChange={e => setEditRentPrice(Number(e.target.value))} required style={{ height: '30px', fontSize: '13px', fontWeight: 800, color: '#166534', borderColor: '#4ade80', marginTop: '2px' }} />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 600 }}>Selling Price (৳) *</label>
-                  <input type="number" step="0.01" className="form-control" value={editSellPrice} onChange={e => setEditSellPrice(Number(e.target.value))} required style={{ height: '38px', fontSize: '13px', fontWeight: 700 }} />
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600 }}>Purchase / Cost Price (৳)</label>
+                    <input type="number" step="0.01" className="form-control" value={editCostPrice} onChange={e => setEditCostPrice(Number(e.target.value))} style={{ height: '38px', fontSize: '13px' }} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600 }}>Selling Price (৳) *</label>
+                    <input type="number" step="0.01" className="form-control" value={editSellPrice} onChange={e => setEditSellPrice(Number(e.target.value))} required style={{ height: '38px', fontSize: '13px', fontWeight: 700 }} />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Stock Quantity Highlight Box */}
               <div style={{ backgroundColor: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1972,6 +2085,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         <BarcodeLabelModal 
           variant={barcodeVariantModal} 
           productName={activeProduct.name} 
+          product={activeProduct}
           onClose={() => setBarcodeVariantModal(null)} 
         />
       )}
@@ -2035,7 +2149,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#0f172a' }}>{v.barcode}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 800, color: '#059669' }}>৳{Number(v.selling_price).toFixed(0)}</span>
+                    {v.rent_price !== undefined && v.rent_price !== null && v.rent_price > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.2 }}>
+                        <span style={{ fontWeight: 800, color: '#166534' }}>Rent: ৳{Number(v.rent_price).toFixed(0)}</span>
+                        <span style={{ fontSize: '10.5px', color: '#64748b' }}>Price: ৳{Number(v.selling_price).toFixed(0)}</span>
+                      </div>
+                    ) : (
+                      <span style={{ fontWeight: 800, color: '#059669' }}>৳{Number(v.selling_price).toFixed(0)}</span>
+                    )}
                     <span style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', color: '#64748b' }}>
                       Stock: {v.stock_quantity ?? 0}
                     </span>
@@ -2085,6 +2206,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   const printItems = createdVariantsForPrint.variants.map(v => ({
                     variant: v,
                     productName: createdVariantsForPrint.productName,
+                    product: activeProduct || undefined,
                     copies: createdVariantsForPrint.copiesMode === 'stock' ? Math.max(1, v.stock_quantity ?? 1) : 1
                   }));
                   printVariantsBatchLabels(printItems);

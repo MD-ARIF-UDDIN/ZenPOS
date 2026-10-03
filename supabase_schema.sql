@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     category VARCHAR(100),
     brand VARCHAR(100),
     description TEXT,
+    rent_price DECIMAL(10,2) DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.product_variants (
     color VARCHAR(50),
     purchase_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     selling_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    rent_price DECIMAL(10,2) DEFAULT NULL,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
     min_stock_level INTEGER NOT NULL DEFAULT 5,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
