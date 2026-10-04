@@ -61,7 +61,7 @@ const getSavedSettings = (): BarcodeTuningSettings => {
 
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, product, onClose }) => {
   const parentProduct = product || variant.product;
-  const isSherwani = (parentProduct?.category || '').toLowerCase().includes('sherwani');
+  const isSherwani = /sherwan/i.test(parentProduct?.category || '');
   const rentPrice = variant.rent_price !== undefined && variant.rent_price !== null && Number(variant.rent_price) > 0
     ? Number(variant.rent_price)
     : (parentProduct?.rent_price !== undefined && parentProduct?.rent_price !== null ? Number(parentProduct.rent_price) : null);
@@ -70,7 +70,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
 
   const [copies, setCopies] = useState<number>(1);
   const [storeName, setStoreName] = useState<string>('RAJMAHAL');
-  const [showPrice, setShowPrice] = useState<boolean>(true);
+  const [showPrice, setShowPrice] = useState<boolean>(!isSherwani);
   const [hasDiscount, setHasDiscount] = useState<boolean>(false);
   const [discountPrice, setDiscountPrice] = useState<number>(baseEffectivePrice);
   const [promoBadge, setPromoBadge] = useState<string>('SPECIAL OFFER');
@@ -194,7 +194,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
           </div>
 
           <!-- 4. Price Tag (Safe distance from bottom) -->
-          ${showPrice ? `
+          ${(!isSherwani && showPrice) ? `
             <div class="price-box">
               ${hasDiscount ? `
                 <div style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 4px; text-align: center;">
@@ -483,65 +483,75 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px' }}>
-            <input 
-              type="checkbox" 
-              id="show-price-chk"
-              checked={showPrice} 
-              onChange={e => setShowPrice(e.target.checked)}
-              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#0b2545' }}
-            />
-            <label htmlFor="show-price-chk" style={{ fontSize: '11.5px', fontWeight: 600, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              Show Price
-            </label>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px' }}>
-            <input 
-              type="checkbox" 
-              id="has-discount-chk"
-              checked={hasDiscount} 
-              onChange={e => {
-                setHasDiscount(e.target.checked);
-                if (e.target.checked && discountPrice === baseEffectivePrice) {
-                  setDiscountPrice(Math.round(baseEffectivePrice * 0.9));
-                }
-              }}
-              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#e11d48' }}
-            />
-            <label htmlFor="has-discount-chk" style={{ fontSize: '11.5px', fontWeight: 700, color: '#e11d48', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              🔥 Sale Tag
-            </label>
-          </div>
-
-          {/* Conditional Discount Fields */}
-          {hasDiscount && (
-            <div style={{ display: 'flex', gap: '8px', width: '100%', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#e11d48', display: 'block', marginBottom: '2px' }}>
-                  Sale / Offer Price (৳)
-                </label>
+          {!isSherwani ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px' }}>
                 <input 
-                  type="number" 
-                  value={discountPrice} 
-                  onChange={e => setDiscountPrice(Number(e.target.value))}
-                  className="form-control"
-                  style={{ height: '30px', fontSize: '12px', fontWeight: 700, borderColor: '#fda4af' }}
+                  type="checkbox" 
+                  id="show-price-chk"
+                  checked={showPrice} 
+                  onChange={e => setShowPrice(e.target.checked)}
+                  style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#0b2545' }}
                 />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
-                  Promo Badge Label
+                <label htmlFor="show-price-chk" style={{ fontSize: '11.5px', fontWeight: 600, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  Show Price
                 </label>
-                <input 
-                  type="text" 
-                  value={promoBadge} 
-                  onChange={e => setPromoBadge(e.target.value)}
-                  placeholder="e.g. SALE, 20% OFF, SPECIAL"
-                  className="form-control"
-                  style={{ height: '30px', fontSize: '12px' }}
-                />
               </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px' }}>
+                <input 
+                  type="checkbox" 
+                  id="has-discount-chk"
+                  checked={hasDiscount} 
+                  onChange={e => {
+                    setHasDiscount(e.target.checked);
+                    if (e.target.checked && discountPrice === baseEffectivePrice) {
+                      setDiscountPrice(Math.round(baseEffectivePrice * 0.9));
+                    }
+                  }}
+                  style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#e11d48' }}
+                />
+                <label htmlFor="has-discount-chk" style={{ fontSize: '11.5px', fontWeight: 700, color: '#e11d48', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  🔥 Sale Tag
+                </label>
+              </div>
+
+              {/* Conditional Discount Fields */}
+              {hasDiscount && (
+                <div style={{ display: 'flex', gap: '8px', width: '100%', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#e11d48', display: 'block', marginBottom: '2px' }}>
+                      Sale / Offer Price (৳)
+                    </label>
+                    <input 
+                      type="number" 
+                      value={discountPrice} 
+                      onChange={e => setDiscountPrice(Number(e.target.value))}
+                      className="form-control"
+                      style={{ height: '30px', fontSize: '12px', fontWeight: 700, borderColor: '#fda4af' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
+                      Promo Badge Label
+                    </label>
+                    <input 
+                      type="text" 
+                      value={promoBadge} 
+                      onChange={e => setPromoBadge(e.target.value)}
+                      placeholder="e.g. SALE, 20% OFF, SPECIAL"
+                      className="form-control"
+                      style={{ height: '30px', fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '14px', fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>
+              <span style={{ backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                🏷️ Sherwani: Price omitted from tag
+              </span>
             </div>
           )}
 
@@ -829,7 +839,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                   </div>
 
                   {/* 4. Price Tag (Bottom) */}
-                  {showPrice && (
+                  {!isSherwani && showPrice && (
                     <div style={{
                       borderTop: '1px dashed #cbd5e1',
                       width: '100%',
@@ -954,7 +964,7 @@ export const printVariantsBatchLabels = (
 
   const stickerItemsHtml = items.flatMap(({ variant, productName, product, copies = 1 }) => {
     const parentProduct = product || variant.product;
-    const isSherwani = (parentProduct?.category || '').toLowerCase().includes('sherwani');
+    const isSherwani = /sherwan/i.test(parentProduct?.category || '');
     const rentPrice = variant.rent_price !== undefined && variant.rent_price !== null && Number(variant.rent_price) > 0
       ? Number(variant.rent_price)
       : (parentProduct?.rent_price !== undefined && parentProduct?.rent_price !== null ? Number(parentProduct.rent_price) : null);
@@ -1011,11 +1021,13 @@ export const printVariantsBatchLabels = (
           </div>
 
           <!-- 4. Price Tag (Bottom) -->
+          ${!isSherwani ? `
           <div class="price-box">
             <div class="price-mrp" style="font-size: ${(BASE_CONFIG.priceFontSize * scale).toFixed(1)}px;">
               ${finalPriceText}
             </div>
           </div>
+          ` : ''}
         </div>
       </div>
     `);
