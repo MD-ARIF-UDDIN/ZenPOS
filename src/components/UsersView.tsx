@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
+import { supabase } from '../supabaseClient';
 import { useNotificationStore } from '../store';
 import { createClient } from '@supabase/supabase-js';
 import { Plus, Trash2 } from 'lucide-react';
@@ -40,7 +41,10 @@ export const UsersView: React.FC = () => {
 
   const handleCreateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) return;
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+    const cleanFullName = fullName.trim();
+    if (!cleanEmail || !cleanPassword) return;
     setFormLoading(true);
     showToast('Registering staff user...', 'info');
 
@@ -57,12 +61,12 @@ export const UsersView: React.FC = () => {
       });
 
       // Call signUp on the secondary client
-      const { error } = await secondaryClient.auth.signUp({
-        email,
-        password,
+      const { data, error } = await secondaryClient.auth.signUp({
+        email: cleanEmail,
+        password: cleanPassword,
         options: {
           data: {
-            full_name: fullName || 'Shop Staff',
+            full_name: cleanFullName || 'Shop Staff',
             role: role
           }
         }
@@ -70,7 +74,26 @@ export const UsersView: React.FC = () => {
 
       if (error) throw error;
 
-      showToast(`Account created successfully for ${email}!`, 'success');
+      // Ensure public.users profile row exists
+      if (data?.user?.id) {
+        try {
+          await supabase.from('users').upsert({
+            id: data.user.id,
+            email: cleanEmail,
+            full_name: cleanFullName || 'Shop Staff',
+            role: role
+          });
+        } catch (dbErr) {
+          console.warn('Direct users upsert note:', dbErr);
+        }
+      }
+
+      if (data?.user && !data.session && !data.user.email_confirmed_at) {
+        showToast(`Staff registered! (Note: Turn off "Confirm email" in Supabase Auth Settings to allow instant login without email verification)`, 'warning');
+      } else {
+        showToast(`Account created successfully for ${cleanEmail}!`, 'success');
+      }
+
       setShowAddModal(false);
       setFullName('');
       setEmail('');
@@ -80,7 +103,7 @@ export const UsersView: React.FC = () => {
       // Delay reload slightly to let backend triggers finish syncing the user table
       setTimeout(() => {
         loadUsers();
-      }, 1000);
+      }, 800);
 
     } catch (err: any) {
       showToast(err.message || 'Failed to create staff account', 'error');

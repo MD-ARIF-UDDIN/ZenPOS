@@ -18,8 +18,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     setLoading(true);
     setErrorMsg('');
 
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
     // Quick test accounts fallback
-    if (email === 'admin@gmail.com' && password === '123') {
+    if (cleanEmail === 'admin@gmail.com' && cleanPassword === '123') {
       const mockSession = {
         user: {
           id: '84787c16-4295-4b8f-bc8c-49a01fd12d77',
@@ -36,7 +39,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
       return;
     }
 
-    if (email === 'cashier@gmail.com' && password === '123') {
+    if (cleanEmail === 'cashier@gmail.com' && cleanPassword === '123') {
       const mockSession = {
         user: {
           id: 'mock-cashier-id-123',
@@ -53,7 +56,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
       return;
     }
 
-    if (email === 'sales@gmail.com' && password === '123') {
+    if (cleanEmail === 'sales@gmail.com' && cleanPassword === '123') {
       const mockSession = {
         user: {
           id: 'mock-sales-exec-id-123',
@@ -72,16 +75,19 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: cleanEmail,
+        password: cleanPassword,
       });
       if (error) throw error;
       if (data.session) {
         onAuthSuccess(data.session);
       }
     } catch (err: any) {
-      if (err.message && err.message.toLowerCase().includes('email not confirmed')) {
-        setErrorMsg('Email not confirmed. Please turn off "Confirm email" in Supabase Auth Settings.');
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('email not confirmed')) {
+        setErrorMsg('Email not confirmed. Please disable "Confirm email" in Supabase Auth Settings or confirm the user in Supabase SQL.');
+      } else if (msg.includes('invalid login credentials')) {
+        setErrorMsg('Invalid email or password. (If created recently, ensure "Confirm email" is disabled in Supabase).');
       } else {
         setErrorMsg(err.message || 'Invalid email or password');
       }
