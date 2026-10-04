@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Shirt, TrendingUp, AlertTriangle, Users, FileText, X, Receipt } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
+import { isRestrictedStaffRole } from '../roleUtils';
 
 interface SidebarProps {
   currentTab?: string;
@@ -8,14 +9,17 @@ interface SidebarProps {
   lowStockCount: number;
   isOpen?: boolean;
   onClose?: () => void;
+  userRole?: string;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount, isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount, isOpen, onClose, userRole }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const activePath = location.pathname.substring(1) || 'pos';
 
-  const menuItems = [
+  const isRestricted = isRestrictedStaffRole(userRole);
+
+  const allMenuItems = [
     { id: 'pos', path: '/pos', label: 'POS Checkout', icon: ShoppingCart },
     { id: 'products', path: '/products', label: 'Products', icon: Shirt },
     { id: 'stock', path: '/stock', label: 'Stock & Inventory', icon: AlertTriangle, badge: lowStockCount > 0 ? lowStockCount : undefined },
@@ -24,6 +28,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount, isOpen, onClose
     { id: 'users', path: '/users', label: 'Staff Management', icon: Users },
     { id: 'reports', path: '/reports', label: 'Reports', icon: TrendingUp },
   ];
+
+  // Cashier and Sales Executive ONLY see POS Checkout and Sales History
+  const menuItems = isRestricted
+    ? allMenuItems.filter(item => item.id === 'pos' || item.id === 'sales')
+    : allMenuItems;
 
   const handleItemClick = (path: string) => {
     navigate(path);

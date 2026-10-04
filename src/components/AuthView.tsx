@@ -18,7 +18,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     setLoading(true);
     setErrorMsg('');
 
-    // Quick admin fallback for testing
+    // Quick test accounts fallback
     if (email === 'admin@gmail.com' && password === '123') {
       const mockSession = {
         user: {
@@ -27,6 +27,40 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           user_metadata: {
             full_name: 'Rajmahal Admin',
             role: 'admin'
+          }
+        }
+      };
+      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
+      onAuthSuccess(mockSession);
+      setLoading(false);
+      return;
+    }
+
+    if (email === 'cashier@gmail.com' && password === '123') {
+      const mockSession = {
+        user: {
+          id: 'mock-cashier-id-123',
+          email: 'cashier@gmail.com',
+          user_metadata: {
+            full_name: 'Shop Cashier',
+            role: 'cashier'
+          }
+        }
+      };
+      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
+      onAuthSuccess(mockSession);
+      setLoading(false);
+      return;
+    }
+
+    if (email === 'sales@gmail.com' && password === '123') {
+      const mockSession = {
+        user: {
+          id: 'mock-sales-exec-id-123',
+          email: 'sales@gmail.com',
+          user_metadata: {
+            full_name: 'Sales Executive Staff',
+            role: 'sales_executive'
           }
         }
       };

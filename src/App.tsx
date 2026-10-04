@@ -13,10 +13,12 @@ import { dbService } from './dbService';
 import { supabase } from './supabaseClient';
 import { useNotificationStore } from './store';
 import { RefreshCw, LogOut, User, Menu } from 'lucide-react';
+import { isRestrictedStaffRole, formatRoleName } from './roleUtils';
 
 function App() {
   const { toasts, removeToast, modal, closeModal } = useNotificationStore();
   const [session, setSession] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('cashier');
   const [lowStockCount, setLowStockCount] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -31,7 +33,26 @@ function App() {
     localStorage.removeItem('sb-mock-session');
     await supabase.auth.signOut();
     setSession(null);
+    setUserRole('cashier');
   };
+
+  // Sync userRole from session metadata and users table
+  useEffect(() => {
+    if (!session?.user) {
+      setUserRole('');
+      return;
+    }
+    const initialRole = 
+      session.user.user_metadata?.role || 
+      (session.user.email === 'admin@gmail.com' ? 'admin' : 'cashier');
+    setUserRole(initialRole);
+
+    if (session.user.id) {
+      dbService.getUserRole(session.user.id, initialRole).then(resolved => {
+        if (resolved) setUserRole(resolved);
+      });
+    }
+  }, [session]);
 
   const refreshStats = async () => {
     try {
@@ -106,6 +127,7 @@ function App() {
   };
 
   const userEmail = session?.user?.email || 'Cashier';
+  const isRestricted = isRestrictedStaffRole(userRole);
 
   return (
     <div className="app-container">
@@ -114,6 +136,7 @@ function App() {
         lowStockCount={lowStockCount} 
         isOpen={isMobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        userRole={userRole}
       />
 
       {/* Dim Overlay Backdrop for Mobile Menu Drawer */}
@@ -207,6 +230,21 @@ function App() {
             }}>
               <User size={13} style={{ color: 'var(--color-primary)' }} />
               <span className="user-email">{userEmail}</span>
+              {userRole && (
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  background: isRestricted ? '#e0f2fe' : '#ede9fe',
+                  color: isRestricted ? '#0369a1' : '#6d28d9',
+                  letterSpacing: '0.4px',
+                  marginLeft: '2px'
+                }}>
+                  {formatRoleName(userRole)}
+                </span>
+              )}
             </div>
 
             {/* Refresh stats manually */}
@@ -236,12 +274,12 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/pos" replace />} />
             <Route path="/pos" element={<POSView onRefreshStats={refreshStats} />} />
-            <Route path="/products" element={<ProductsView onRefreshStats={refreshStats} />} />
-            <Route path="/stock" element={<StockView onRefreshStats={refreshStats} />} />
-            <Route path="/sales" element={<SalesListView />} />
-            <Route path="/expenses" element={<ExpensesView onRefreshStats={refreshStats} />} />
-            <Route path="/users" element={<UsersView />} />
-            <Route path="/reports" element={<ReportsView />} />
+            <Route path="/sales" element={<SalesListView isRestricted={isRestricted} />} />
+            <Route path="/products" element={isRestricted ? <Navigate to="/pos" replace /> : <ProductsView onRefreshStats={refreshStats} />} />
+            <Route path="/stock" element={isRestricted ? <Navigate to="/pos" replace /> : <StockView onRefreshStats={refreshStats} />} />
+            <Route path="/expenses" element={isRestricted ? <Navigate to="/pos" replace /> : <ExpensesView onRefreshStats={refreshStats} />} />
+            <Route path="/users" element={isRestricted ? <Navigate to="/pos" replace /> : <UsersView />} />
+            <Route path="/reports" element={isRestricted ? <Navigate to="/pos" replace /> : <ReportsView />} />
             <Route path="*" element={<Navigate to="/pos" replace />} />
           </Routes>
         </main>

@@ -4,7 +4,11 @@ import { Search, Eye } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 
-export const SalesListView: React.FC = () => {
+interface SalesListViewProps {
+  isRestricted?: boolean;
+}
+
+export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = false }) => {
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,8 +23,8 @@ export const SalesListView: React.FC = () => {
   const loadSales = async () => {
     try {
       setLoading(true);
-      const list = await dbService.getSales();
-      setSales(list);
+      const list = await dbService.getSales(false, isRestricted ? 5 : undefined);
+      setSales(isRestricted ? list.slice(0, 5) : list);
     } catch (e) {
       console.error('Failed to load sales list', e);
     } finally {
@@ -30,7 +34,7 @@ export const SalesListView: React.FC = () => {
 
   useEffect(() => {
     loadSales();
-  }, []);
+  }, [isRestricted]);
 
   const handleViewDetails = async (sale: any) => {
     setSelectedSale(sale);
@@ -46,13 +50,16 @@ export const SalesListView: React.FC = () => {
   };
 
   // Filter sales
-  const filteredSales = sales.filter(s => 
+  const baseSales = isRestricted ? sales.slice(0, 5) : sales;
+  const filteredSales = baseSales.filter(s => 
     s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.payment_method.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.customer_phone && s.customer_phone.includes(searchQuery))
   );
 
-  const paginatedSales = filteredSales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedSales = isRestricted
+    ? filteredSales.slice(0, 5)
+    : filteredSales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const invoiceData: InvoiceData | null = selectedSale ? {
     invoiceId: selectedSale.id,
@@ -173,13 +180,15 @@ export const SalesListView: React.FC = () => {
               )}
             </tbody>
           </table>
-          <Pagination 
-            currentPage={currentPage}
-            totalItems={filteredSales.length}
-            pageSize={pageSize}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={setPageSize}
-          />
+          {!isRestricted && (
+            <Pagination 
+              currentPage={currentPage}
+              totalItems={filteredSales.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
         </div>
       )}
 

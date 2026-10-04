@@ -283,15 +283,24 @@ export const dbService = {
   },
 
   // --- Sales ---
-  async getSales(forceRefresh = false) {
+  async getSales(forceRefresh = false, limit?: number) {
     const now = Date.now();
     if (!forceRefresh && cache.sales && (now - cache.sales.timestamp < CACHE_TTL_MS)) {
-      return cache.sales.data;
+      return limit ? cache.sales.data.slice(0, limit) : cache.sales.data;
     }
-    const { data, error } = await supabase
+    let query = supabase
       .from('sales')
       .select('*')
       .order('sale_date', { ascending: false });
+
+    if (limit) {
+      query = query.limit(limit);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     const result = data || [];
     cache.sales = { data: result, timestamp: now };
@@ -430,6 +439,22 @@ export const dbService = {
       .eq('id', id);
     if (error) throw error;
     clearPosCache(['users']);
+  },
+
+  async getUserRole(userId: string, fallbackRole = 'cashier'): Promise<string> {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!error && data?.role) {
+        return data.role;
+      }
+    } catch (e) {
+      console.warn('Could not fetch role from users table:', e);
+    }
+    return fallbackRole;
   },
 
   async getSaleItemsDetailed(forceRefresh = false) {

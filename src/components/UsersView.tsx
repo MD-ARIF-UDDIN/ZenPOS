@@ -4,6 +4,7 @@ import { useNotificationStore } from '../store';
 import { createClient } from '@supabase/supabase-js';
 import { Plus, Trash2 } from 'lucide-react';
 import { Pagination } from './Pagination';
+import { STAFF_ROLES } from '../roleUtils';
 
 export const UsersView: React.FC = () => {
   const { showToast, showConfirm } = useNotificationStore();
@@ -165,11 +166,11 @@ export const UsersView: React.FC = () => {
                         className="form-control" 
                         value={u.role || 'cashier'} 
                         onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                        style={{ padding: '2px 6px', fontSize: '12px', width: '110px', height: '28px' }}
+                        style={{ padding: '2px 6px', fontSize: '12px', width: '140px', height: '28px' }}
                       >
-                        <option value="cashier">Cashier</option>
-                        <option value="manager">Manager</option>
-                        <option value="admin">Administrator</option>
+                        {STAFF_ROLES.map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
                       </select>
                     </td>
                     <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(u.created_at).toLocaleDateString()}</td>
@@ -239,9 +240,9 @@ export const UsersView: React.FC = () => {
                   value={role} 
                   onChange={e => setRole(e.target.value)}
                 >
-                  <option value="cashier">Cashier</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Administrator</option>
+                  {STAFF_ROLES.map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
                 </select>
               </div>
 
