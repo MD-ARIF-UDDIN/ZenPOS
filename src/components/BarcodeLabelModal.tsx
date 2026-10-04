@@ -59,14 +59,29 @@ const getSavedSettings = (): BarcodeTuningSettings => {
   return DEFAULT_SETTINGS;
 };
 
+export const isSherwaniItem = (
+  product?: Product | null,
+  variant?: ProductVariant | null,
+  productName?: string | null
+): boolean => {
+  const cat = (product?.category || variant?.product?.category || (variant as any)?.category || '').toLowerCase().trim();
+  const name = (product?.name || productName || '').toLowerCase().trim();
+  const hasRent = (variant?.rent_price !== undefined && variant?.rent_price !== null && Number(variant.rent_price) > 0) ||
+                  (product?.rent_price !== undefined && product?.rent_price !== null && Number(product.rent_price) > 0);
+  
+  return /sherwan/i.test(cat) || 
+         /sherwan/i.test(name) || 
+         hasRent;
+};
+
 export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, productName, product, onClose }) => {
   const parentProduct = product || variant.product;
-  const isSherwani = /sherwan/i.test(parentProduct?.category || '');
+  const isSherwani = isSherwaniItem(parentProduct, variant, productName);
   const rentPrice = variant.rent_price !== undefined && variant.rent_price !== null && Number(variant.rent_price) > 0
     ? Number(variant.rent_price)
     : (parentProduct?.rent_price !== undefined && parentProduct?.rent_price !== null ? Number(parentProduct.rent_price) : null);
   const displayAsRent = isSherwani || (rentPrice !== null && rentPrice > 0);
-  const baseEffectivePrice = displayAsRent && rentPrice !== null ? rentPrice : variant.selling_price;
+  const baseEffectivePrice = variant.selling_price;
 
   const [copies, setCopies] = useState<number>(1);
   const [storeName, setStoreName] = useState<string>('RAJMAHAL');
@@ -208,7 +223,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({ variant, p
                 ${promoBadge ? `<div style="font-size: ${(BASE_CONFIG.subFontSize * scale).toFixed(1)}px; font-weight: 800; border: 1px solid #000; padding: 0 2px; border-radius: 2px; text-transform: uppercase; line-height: 1; margin-top: 0.2mm;">${promoBadge}</div>` : ''}
               ` : `
                 <div class="price-mrp" style="font-size: ${(BASE_CONFIG.priceFontSize * scale).toFixed(1)}px;">
-                  ${displayAsRent ? `Rent: ৳${Number(rentPrice ?? variant.selling_price).toFixed(2)}` : `MRP: ৳${variant.selling_price.toFixed(2)}`}
+                  MRP: ৳${variant.selling_price.toFixed(2)}
                 </div>
               `}
             </div>
@@ -964,14 +979,8 @@ export const printVariantsBatchLabels = (
 
   const stickerItemsHtml = items.flatMap(({ variant, productName, product, copies = 1 }) => {
     const parentProduct = product || variant.product;
-    const isSherwani = /sherwan/i.test(parentProduct?.category || '');
-    const rentPrice = variant.rent_price !== undefined && variant.rent_price !== null && Number(variant.rent_price) > 0
-      ? Number(variant.rent_price)
-      : (parentProduct?.rent_price !== undefined && parentProduct?.rent_price !== null ? Number(parentProduct.rent_price) : null);
-    const displayAsRent = isSherwani || (rentPrice !== null && rentPrice > 0);
-    const finalPriceText = displayAsRent 
-      ? `Rent: ৳${Number(rentPrice ?? variant.selling_price).toFixed(2)}` 
-      : `MRP: ৳${Number(variant.selling_price).toFixed(2)}`;
+    const isSherwani = isSherwaniItem(parentProduct, variant, productName);
+    const finalPriceText = `MRP: ৳${Number(variant.selling_price).toFixed(2)}`;
 
     let svgHtml = '';
     const cleanBc = (variant.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
