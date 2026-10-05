@@ -56,6 +56,23 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
       return;
     }
 
+    if (cleanEmail === 'dipan@gmail.com' && cleanPassword === 'dipan123@') {
+      const mockSession = {
+        user: {
+          id: 'dipan-cashier-user-id',
+          email: 'dipan@gmail.com',
+          user_metadata: {
+            full_name: 'Dipan (Cashier)',
+            role: 'cashier'
+          }
+        }
+      };
+      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
+      onAuthSuccess(mockSession);
+      setLoading(false);
+      return;
+    }
+
     if (cleanEmail === 'sales@gmail.com' && cleanPassword === '123') {
       const mockSession = {
         user: {
