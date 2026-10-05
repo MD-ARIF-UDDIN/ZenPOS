@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Printer, X, Sliders, RefreshCw, Store, AlertCircle, Eye, AlignCenter } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
 
@@ -34,14 +34,14 @@ export interface InvoiceData {
 
 export interface InvoicePrintSettings {
   paperWidth: number; // physical paper roll width in mm (58mm)
-  contentWidth: number; // printable width in mm (default 48mm for 58mm printer)
-  horizontalOffset: number; // in mm: 0 = exact center, positive = shift right, negative = shift left
-  verticalOffset: number; // in mm: top margin / feed
+  contentWidth: number; // printable width in mm (default 42mm for 58mm printer)
+  leftShift: number; // in mm: physical shift from left paper edge (default 5.5mm centers on 58mm roll)
+  verticalOffset: number; // in mm: top margin / feed (default 2mm)
   fontScale: number; // in % (default 105%)
-  itemSpacing: number; // in mm
+  itemSpacing: number; // in mm (default 0.5mm)
   showLogo: boolean;
-  logoSize: number; // in px (default 58px, clear & prominent)
-  logoContrast: number; // in % for thermal clarity (default 140%)
+  logoSize: number; // in px: width of logo (default 140px for full sharp banner)
+  logoThreshold: number; // 120-240: threshold to convert logo to pure thermal black & white
   showStoreHeader: boolean;
   storeName: string;
   storeSubtitle: string;
@@ -56,14 +56,14 @@ export interface InvoicePrintSettings {
 
 const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   paperWidth: 58,
-  contentWidth: 48, // 48mm printable width on standard 58mm (384 dots) printer
-  horizontalOffset: 0, // 0mm = mathematically auto-centered ((58-48)/2 = 5mm margin on both sides)
-  verticalOffset: 2, // 2mm top margin for clean cut/tear line
+  contentWidth: 42, // 42mm safe printable width
+  leftShift: 5.5, // 5.5mm left margin centers 42mm content on 58mm paper roll (5.5 + 42 + 10.5 = 58)
+  verticalOffset: 2.0, // 2mm top feed
   fontScale: 105,
   itemSpacing: 0.5,
   showLogo: true,
-  logoSize: 58, // Prominent, clear and crisp on 58mm paper
-  logoContrast: 140,
+  logoSize: 135, // 135px width makes the full brand logo prominent & sharp
+  logoThreshold: 210, // Removes cream background and keeps dark blue text pure pitch black
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
   storeSubtitle: 'Elegance — Mens Wear',
@@ -76,20 +76,28 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   footerText: 'Thank you for your shopping!'
 };
 
-const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v12';
+const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v13';
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('pos_invoice_print_settings_58mm_v11');
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('pos_invoice_print_settings_58mm_v12');
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Migration from older v11 rightShift to v12 horizontalOffset
-      if (parsed.rightShift !== undefined && parsed.horizontalOffset === undefined) {
-        parsed.horizontalOffset = 0;
+      // Migration from older settings
+      if (parsed.leftShift === undefined) {
+        if (parsed.horizontalOffset !== undefined) {
+          parsed.leftShift = Math.max(0, 5.5 + parsed.horizontalOffset);
+        } else if (parsed.rightShift !== undefined) {
+          parsed.leftShift = Math.max(0, parsed.rightShift + 3);
+        } else {
+          parsed.leftShift = 5.5;
+        }
       }
-      // If logoSize was tiny (legacy default 22px), upgrade to 58px
-      if (parsed.logoSize && parsed.logoSize < 35) {
-        parsed.logoSize = 58;
+      if (!parsed.logoSize || parsed.logoSize < 60) {
+        parsed.logoSize = 135;
+      }
+      if (!parsed.contentWidth || parsed.contentWidth > 46) {
+        parsed.contentWidth = 42;
       }
       return { ...DEFAULT_INVOICE_SETTINGS, ...parsed };
     }
@@ -108,7 +116,50 @@ interface InvoicePrintModalProps {
 export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onClose, onNewSale }) => {
   const [settings, setSettings] = useState<InvoicePrintSettings>(getSavedInvoiceSettings);
   const [showTuning, setShowTuning] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'adjust' | 'logo' | 'showroom'>('adjust');
+  const [activeTab, setActiveTab] = useState<'align' | 'logo' | 'text'>('align');
+  const [monochromeLogo, setMonochromeLogo] = useState<string>('');
+
+  // Process logo into pure thermal high-contrast monochrome (removes cream background noise)
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 400;
+        canvas.height = img.naturalHeight || 400;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data;
+        const threshold = settings.logoThreshold || 210;
+        for (let i = 0; i < d.length; i += 4) {
+          const gray = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+          if (gray < threshold) {
+            d[i] = 0;
+            d[i + 1] = 0;
+            d[i + 2] = 0;
+            d[i + 3] = 255;
+          } else {
+            d[i] = 255;
+            d[i + 1] = 255;
+            d[i + 2] = 255;
+            d[i + 3] = 0; // Pure transparent white
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        setMonochromeLogo(canvas.toDataURL('image/png'));
+      } catch (err) {
+        console.warn('Monochrome conversion fallback:', err);
+        setMonochromeLogo(logoImg);
+      }
+    };
+    img.onerror = () => setMonochromeLogo(logoImg);
+    img.src = logoImg;
+  }, [settings.logoThreshold]);
 
   const updateSettings = (partial: Partial<InvoicePrintSettings>) => {
     setSettings(prev => {
@@ -123,15 +174,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_INVOICE_SETTINGS));
   };
 
-  const applyPreset = (preset: 'centered48' | 'safe44' | 'wide52' | 'compact40') => {
-    if (preset === 'centered48') {
-      updateSettings({ contentWidth: 48, horizontalOffset: 0, verticalOffset: 2, fontScale: 105, logoSize: 58 });
-    } else if (preset === 'safe44') {
-      updateSettings({ contentWidth: 44, horizontalOffset: 0, verticalOffset: 2, fontScale: 102, logoSize: 52 });
-    } else if (preset === 'wide52') {
-      updateSettings({ contentWidth: 52, horizontalOffset: 0, verticalOffset: 2, fontScale: 108, logoSize: 64 });
-    } else if (preset === 'compact40') {
-      updateSettings({ contentWidth: 40, horizontalOffset: 0, verticalOffset: 2, fontScale: 98, logoSize: 45 });
+  const applyPreset = (preset: 'center58' | 'shiftRight' | 'compact' | 'wide') => {
+    if (preset === 'center58') {
+      updateSettings({ contentWidth: 42, leftShift: 5.5, verticalOffset: 2.0, logoSize: 135 });
+    } else if (preset === 'shiftRight') {
+      updateSettings({ contentWidth: 41, leftShift: 7.0, verticalOffset: 2.0, logoSize: 130 });
+    } else if (preset === 'compact') {
+      updateSettings({ contentWidth: 39, leftShift: 6.5, verticalOffset: 1.5, logoSize: 120 });
+    } else if (preset === 'wide') {
+      updateSettings({ contentWidth: 45, leftShift: 4.0, verticalOffset: 2.0, logoSize: 145 });
     }
   };
 
@@ -139,16 +190,10 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
   const baseFontSize = 11.5 * scale;
   const titleFontSize = 15.5 * scale;
   const totalFontSize = 14.5 * scale;
-  const contentWidth = Math.min(54, Math.max(34, settings.contentWidth || 48));
-  const hOffset = settings.horizontalOffset || 0;
-  const vOffset = Math.max(0, settings.verticalOffset ?? 2);
-  const logoSize = Math.max(20, settings.logoSize || 58);
-  const logoContrast = settings.logoContrast || 140;
-
-  // Exact margin-left computation to ensure perfectly centered alignment on 58mm paper roll
-  // Paper width (58mm) - content width (e.g. 48mm) / 2 = 5mm left margin
-  // + user's horizontal fine-tuning offset (hOffset)
-  const calculatedLeftMargin = Math.max(0, ((settings.paperWidth - contentWidth) / 2) + hOffset);
+  const contentWidth = Math.min(50, Math.max(34, settings.contentWidth || 42));
+  const leftShift = Math.max(0, settings.leftShift ?? 5.5);
+  const vOffset = Math.max(0, settings.verticalOffset ?? 2.0);
+  const logoSize = Math.max(40, settings.logoSize || 135);
 
   const handlePrint = () => {
     let iframe = document.getElementById('invoice-isolated-print-frame') as HTMLIFrameElement;
@@ -206,6 +251,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         </div>
       `).join('');
 
+    const activeLogoSrc = monochromeLogo || logoImg;
+
     doc.open();
     doc.write(`
       <!DOCTYPE html>
@@ -215,7 +262,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           <style>
             @page {
               size: ${settings.paperWidth}mm auto;
-              margin: 0 !important;
+              margin: 0mm !important;
             }
             * {
               box-sizing: border-box !important;
@@ -224,7 +271,6 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             }
             html, body {
               width: ${settings.paperWidth}mm !important;
-              max-width: ${settings.paperWidth}mm !important;
               margin: 0 !important;
               padding: 0 !important;
               background: #ffffff !important;
@@ -238,16 +284,18 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               text-rendering: optimizeLegibility !important;
               overflow: visible !important;
             }
+            .receipt-wrapper {
+              width: ${settings.paperWidth}mm !important;
+              padding-left: ${leftShift.toFixed(1)}mm !important;
+              padding-top: ${vOffset.toFixed(1)}mm !important;
+              padding-bottom: 2mm !important;
+              box-sizing: border-box !important;
+            }
             .receipt-container {
               width: ${contentWidth}mm !important;
               max-width: ${contentWidth}mm !important;
-              margin-left: ${calculatedLeftMargin.toFixed(1)}mm !important;
-              margin-right: auto !important;
-              margin-top: ${vOffset.toFixed(1)}mm !important;
-              padding-top: 1mm !important;
-              padding-bottom: 2mm !important;
-              padding-left: 0 !important;
-              padding-right: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
               box-sizing: border-box !important;
               page-break-after: avoid !important;
               page-break-before: avoid !important;
@@ -263,13 +311,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             }
             .store-logo {
               width: ${logoSize}px !important;
-              height: ${logoSize}px !important;
-              max-width: 90% !important;
+              max-width: 100% !important;
+              height: auto !important;
               object-fit: contain !important;
-              border-radius: 4px !important;
-              filter: grayscale(100%) contrast(${logoContrast}%) !important;
               display: block !important;
               margin: 0 auto 1.5mm auto !important;
+              image-rendering: -webkit-optimize-contrast !important;
+              image-rendering: crisp-edges !important;
             }
             .store-title {
               font-size: ${titleFontSize.toFixed(1)}px !important;
@@ -384,79 +432,81 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           </style>
         </head>
         <body>
-          <div class="receipt-container">
-            ${settings.showStoreHeader ? `
-              <div class="store-header">
-                ${settings.showLogo ? `<img src="${logoImg}" class="store-logo" alt="Logo" />` : ''}
-                <div class="store-title">${settings.storeName || 'RAJMAHAL'}</div>
-                ${settings.storeSubtitle ? `<div class="store-sub">${settings.storeSubtitle}</div>` : ''}
-                ${settings.storeAddress ? `<div class="store-contact">${settings.storeAddress}</div>` : ''}
-                ${settings.storePhone ? `<div class="store-contact">Phone: ${settings.storePhone}</div>` : ''}
-              </div>
-            ` : ''}
-
-            ${settings.showInvoiceDetails ? `
-              <div class="meta-section">
-                <div class="meta-row">
-                  <span>INV: <strong>${data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
-                  <span>${new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
+          <div class="receipt-wrapper">
+            <div class="receipt-container">
+              ${settings.showStoreHeader ? `
+                <div class="store-header">
+                  ${settings.showLogo ? `<img src="${activeLogoSrc}" class="store-logo" alt="Logo" />` : ''}
+                  <div class="store-title">${settings.storeName || 'RAJMAHAL'}</div>
+                  ${settings.storeSubtitle ? `<div class="store-sub">${settings.storeSubtitle}</div>` : ''}
+                  ${settings.storeAddress ? `<div class="store-contact">${settings.storeAddress}</div>` : ''}
+                  ${settings.storePhone ? `<div class="store-contact">Phone: ${settings.storePhone}</div>` : ''}
                 </div>
-                ${settings.showCustomerPhone && data.customerPhone ? `
+              ` : ''}
+
+              ${settings.showInvoiceDetails ? `
+                <div class="meta-section">
                   <div class="meta-row">
-                    <span>Customer:</span>
-                    <span><strong>${data.customerPhone}</strong></span>
+                    <span>INV: <strong>${data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
+                    <span>${new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
                   </div>
-                ` : ''}
-              </div>
-            ` : ''}
-
-            <!-- Items -->
-            <div class="items-section">
-              ${itemsHtml}
-            </div>
-
-            <!-- Summary / Math -->
-            <div class="math-section">
-              ${data.discountAmount > 0 ? `
-                <div class="math-row">
-                  <span>Subtotal:</span>
-                  <span>৳${data.totalAmount.toFixed(0)}</span>
-                </div>
-                <div class="math-row">
-                  <span>Discount:</span>
-                  <span>-৳${data.discountAmount.toFixed(0)}</span>
+                  ${settings.showCustomerPhone && data.customerPhone ? `
+                    <div class="meta-row">
+                      <span>Customer:</span>
+                      <span><strong>${data.customerPhone}</strong></span>
+                    </div>
+                  ` : ''}
                 </div>
               ` : ''}
 
-              <div class="total-row">
-                <span>TOTAL:</span>
-                <span>৳${data.payableAmount.toFixed(0)}</span>
+              <!-- Items -->
+              <div class="items-section">
+                ${itemsHtml}
               </div>
 
-              ${settings.showPaymentBreakdown ? `
-                ${paymentsHtml || `
+              <!-- Summary / Math -->
+              <div class="math-section">
+                ${data.discountAmount > 0 ? `
                   <div class="math-row">
-                    <span>Paid (${data.paymentMethod}):</span>
-                    <span>৳${data.receivedAmount.toFixed(0)}</span>
+                    <span>Subtotal:</span>
+                    <span>৳${data.totalAmount.toFixed(0)}</span>
                   </div>
-                `}
-                ${data.dueAmount > 0 ? `
-                  <div class="math-row" style="font-weight: 900;">
-                    <span>DUE:</span>
-                    <span>৳${data.dueAmount.toFixed(0)}</span>
+                  <div class="math-row">
+                    <span>Discount:</span>
+                    <span>-৳${data.discountAmount.toFixed(0)}</span>
                   </div>
                 ` : ''}
-                ${data.changeAmount > 0 ? `
-                  <div class="math-row" style="font-weight: 800;">
-                    <span>Change:</span>
-                    <span>৳${data.changeAmount.toFixed(0)}</span>
-                  </div>
-                ` : ''}
-              ` : ''}
-            </div>
 
-            <div class="footer-note">
-              ${settings.footerText || 'Thank you for your shopping!'}
+                <div class="total-row">
+                  <span>TOTAL:</span>
+                  <span>৳${data.payableAmount.toFixed(0)}</span>
+                </div>
+
+                ${settings.showPaymentBreakdown ? `
+                  ${paymentsHtml || `
+                    <div class="math-row">
+                      <span>Paid (${data.paymentMethod}):</span>
+                      <span>৳${data.receivedAmount.toFixed(0)}</span>
+                    </div>
+                  `}
+                  ${data.dueAmount > 0 ? `
+                    <div class="math-row" style="font-weight: 900;">
+                      <span>DUE:</span>
+                      <span>৳${data.dueAmount.toFixed(0)}</span>
+                    </div>
+                  ` : ''}
+                  ${data.changeAmount > 0 ? `
+                    <div class="math-row" style="font-weight: 800;">
+                      <span>Change:</span>
+                      <span>৳${data.changeAmount.toFixed(0)}</span>
+                    </div>
+                  ` : ''}
+                ` : ''}
+              </div>
+
+              <div class="footer-note">
+                ${settings.footerText || 'Thank you for your shopping!'}
+              </div>
             </div>
           </div>
         </body>
@@ -487,7 +537,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     }}>
       <div className="card" style={{
         width: '100%',
-        maxWidth: '780px',
+        maxWidth: '820px',
         maxHeight: '96vh',
         display: 'flex',
         flexDirection: 'column',
@@ -501,10 +551,10 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eef2f6', paddingBottom: '10px', marginBottom: '8px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Sales Invoice Print (58mm Thermal)
+              Sales Invoice Print (Rongta 58mm Thermal)
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              Rongta 58mm Engine • Auto-Centered &amp; Enhanced Logo Visibility
+              Precise Paper Centering &amp; High-Contrast Thermal Logo Engine
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -525,7 +575,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 gap: '4px'
               }}
             >
-              <Sliders size={12} /> {showTuning ? 'Hide Adjustments' : 'Alignment & Logo Settings'}
+              <Sliders size={12} /> {showTuning ? 'Hide Controls' : 'Print Alignment & Logo'}
             </button>
             <button 
               onClick={onClose} 
@@ -536,7 +586,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           </div>
         </div>
 
-        {/* Printer Setup Quick Tip */}
+        {/* Quick Tip Alert */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -551,11 +601,11 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         }}>
           <AlertCircle size={14} style={{ flexShrink: 0 }} />
           <span>
-            <strong>Rongta 58mm Print Tip:</strong> In the browser print dialog, set <strong>Margins: None (0)</strong> and <strong>Paper: 58mm</strong> for perfect centering.
+            <strong>Rongta 58mm Tip:</strong> In the browser print dialog, select <strong>Paper: 58mm</strong> and <strong>Margins: None (0)</strong>. Use the <strong>"Push Right"</strong> buttons below if your printer prints too close to the left edge.
           </span>
         </div>
 
-        {/* Quick Tuning Toolbar */}
+        {/* Tuning Toolbar */}
         {showTuning && (
           <div style={{
             backgroundColor: '#f8fafc',
@@ -572,20 +622,20 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('adjust')}
+                  onClick={() => setActiveTab('align')}
                   style={{
                     padding: '3px 9px',
                     fontSize: '11px',
                     fontWeight: 700,
                     borderRadius: '4px',
                     border: '1px solid',
-                    borderColor: activeTab === 'adjust' ? '#2563eb' : '#cbd5e1',
-                    backgroundColor: activeTab === 'adjust' ? '#eff6ff' : '#ffffff',
-                    color: activeTab === 'adjust' ? '#1d4ed8' : '#64748b',
+                    borderColor: activeTab === 'align' ? '#2563eb' : '#cbd5e1',
+                    backgroundColor: activeTab === 'align' ? '#eff6ff' : '#ffffff',
+                    color: activeTab === 'align' ? '#1d4ed8' : '#64748b',
                     cursor: 'pointer'
                   }}
                 >
-                  <AlignCenter size={11} style={{ display: 'inline', marginRight: '3px' }} /> Centering &amp; Alignment
+                  <AlignCenter size={11} style={{ display: 'inline', marginRight: '3px' }} /> Paper Centering (Left/Right)
                 </button>
                 <button
                   type="button"
@@ -602,20 +652,20 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     cursor: 'pointer'
                   }}
                 >
-                  <Eye size={11} style={{ display: 'inline', marginRight: '3px' }} /> Logo &amp; Size
+                  <Eye size={11} style={{ display: 'inline', marginRight: '3px' }} /> Logo Size &amp; Clarity
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('showroom')}
+                  onClick={() => setActiveTab('text')}
                   style={{
                     padding: '3px 9px',
                     fontSize: '11px',
                     fontWeight: 700,
                     borderRadius: '4px',
                     border: '1px solid',
-                    borderColor: activeTab === 'showroom' ? '#2563eb' : '#cbd5e1',
-                    backgroundColor: activeTab === 'showroom' ? '#eff6ff' : '#ffffff',
-                    color: activeTab === 'showroom' ? '#1d4ed8' : '#64748b',
+                    borderColor: activeTab === 'text' ? '#2563eb' : '#cbd5e1',
+                    backgroundColor: activeTab === 'text' ? '#eff6ff' : '#ffffff',
+                    color: activeTab === 'text' ? '#1d4ed8' : '#64748b',
                     cursor: 'pointer'
                   }}
                 >
@@ -623,30 +673,31 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 </button>
               </div>
 
-              {/* 1-Click Width Presets */}
+              {/* 1-Click Presets */}
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                 <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>Presets:</span>
                 <button
                   type="button"
-                  onClick={() => applyPreset('centered48')}
-                  title="Auto-centered 48mm width with large clear logo"
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: contentWidth === 48 && hOffset === 0 ? '#2563eb' : '#eff6ff', color: contentWidth === 48 && hOffset === 0 ? '#ffffff' : '#1d4ed8', cursor: 'pointer' }}
+                  onClick={() => applyPreset('center58')}
+                  title="Optimal centering on 58mm roll (5.5mm shift right)"
+                  style={{ padding: '2px 7px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: leftShift === 5.5 ? '#2563eb' : '#eff6ff', color: leftShift === 5.5 ? '#ffffff' : '#1d4ed8', cursor: 'pointer' }}
                 >
-                  🎯 Centered (48mm)
+                  🎯 Centered (5.5mm Shift)
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyPreset('safe44')}
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 44 ? '#2563eb' : '#ffffff', color: contentWidth === 44 ? '#ffffff' : '#475569', cursor: 'pointer' }}
+                  onClick={() => applyPreset('shiftRight')}
+                  title="Extra shift right if printer prints too far left"
+                  style={{ padding: '2px 7px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: leftShift === 7.0 ? '#2563eb' : '#ffffff', color: leftShift === 7.0 ? '#ffffff' : '#475569', cursor: 'pointer' }}
                 >
-                  🛡️ Safe 44mm
+                  ▶ Push Right (+7mm)
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyPreset('wide52')}
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 52 ? '#2563eb' : '#ffffff', color: contentWidth === 52 ? '#ffffff' : '#475569', cursor: 'pointer' }}
+                  onClick={() => applyPreset('wide')}
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 45 ? '#2563eb' : '#ffffff', color: contentWidth === 45 ? '#ffffff' : '#475569', cursor: 'pointer' }}
                 >
-                  Wide 52mm
+                  Wide 45mm
                 </button>
                 <button
                   type="button"
@@ -658,45 +709,46 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               </div>
             </div>
 
-            {activeTab === 'adjust' && (
+            {/* TAB 1: Centering & Alignment */}
+            {activeTab === 'align' && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-                  {/* 1. Horizontal Shift / Centering Fine Tune */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Horizontal Shift:</span>
-                      <span style={{ color: hOffset === 0 ? '#059669' : '#2563eb' }}>
-                        {hOffset === 0 ? 'Exact Center (0 mm)' : `${hOffset > 0 ? '+' : ''}${hOffset} mm`}
-                      </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+                  {/* 1. Push Right / Left Shift */}
+                  <div style={{ background: '#f1f5f9', padding: '6px 8px', borderRadius: '5px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800, color: '#1e293b', marginBottom: '3px' }}>
+                      <span>Push Right (Left Margin):</span>
+                      <span style={{ color: '#2563eb', fontWeight: 900 }}>+{leftShift} mm</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <button type="button" onClick={() => updateSettings({ horizontalOffset: parseFloat((hOffset - 0.5).toFixed(1)) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Left">◀</button>
+                      <button type="button" onClick={() => updateSettings({ leftShift: Math.max(0, parseFloat((leftShift - 1).toFixed(1))) })} style={{ width: '28px', height: '24px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Left 1mm">◀◀</button>
+                      <button type="button" onClick={() => updateSettings({ leftShift: Math.max(0, parseFloat((leftShift - 0.5).toFixed(1))) })} style={{ width: '24px', height: '24px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Left 0.5mm">◀</button>
                       <input 
                         type="range" 
-                        min="-8" 
-                        max="12" 
+                        min="0" 
+                        max="14" 
                         step="0.5" 
-                        value={hOffset} 
-                        onChange={e => updateSettings({ horizontalOffset: parseFloat(e.target.value) })}
+                        value={leftShift} 
+                        onChange={e => updateSettings({ leftShift: parseFloat(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ horizontalOffset: parseFloat((hOffset + 0.5).toFixed(1)) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Right">▶</button>
+                      <button type="button" onClick={() => updateSettings({ leftShift: Math.min(14, parseFloat((leftShift + 0.5).toFixed(1))) })} style={{ width: '24px', height: '24px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Right 0.5mm">▶</button>
+                      <button type="button" onClick={() => updateSettings({ leftShift: Math.min(14, parseFloat((leftShift + 1).toFixed(1))) })} style={{ width: '28px', height: '24px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }} title="Shift Right 1mm">▶▶</button>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#64748b', marginTop: '1px' }}>
-                      <span>◀ Left</span>
-                      <button type="button" onClick={() => updateSettings({ horizontalOffset: 0 })} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '9px', cursor: 'pointer', padding: 0, fontWeight: 700 }}>Auto Center</button>
-                      <span>Right ▶</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#64748b', marginTop: '3px' }}>
+                      <span onClick={() => updateSettings({ leftShift: 2 })} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Left (2mm)</span>
+                      <span onClick={() => updateSettings({ leftShift: 5.5 })} style={{ cursor: 'pointer', fontWeight: 800, color: '#2563eb', textDecoration: 'underline' }}>Center (5.5mm)</span>
+                      <span onClick={() => updateSettings({ leftShift: 8 })} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Right (8mm)</span>
                     </div>
                   </div>
 
-                  {/* 2. Vertical Top Feed Offset */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Vertical Top Spacing:</span>
-                      <span style={{ color: '#2563eb' }}>{vOffset} mm</span>
+                  {/* 2. Top Spacing (Vertical Offset) */}
+                  <div style={{ background: '#f1f5f9', padding: '6px 8px', borderRadius: '5px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800, color: '#1e293b', marginBottom: '3px' }}>
+                      <span>Top Feed (Vertical):</span>
+                      <span style={{ color: '#2563eb', fontWeight: 900 }}>{vOffset} mm</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <button type="button" onClick={() => updateSettings({ verticalOffset: Math.max(0, parseFloat((vOffset - 0.5).toFixed(1))) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▲</button>
+                      <button type="button" onClick={() => updateSettings({ verticalOffset: Math.max(0, parseFloat((vOffset - 0.5).toFixed(1))) })} style={{ width: '26px', height: '24px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▲</button>
                       <input 
                         type="range" 
                         min="0" 
@@ -706,15 +758,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                         onChange={e => updateSettings({ verticalOffset: parseFloat(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ verticalOffset: Math.min(25, parseFloat((vOffset + 0.5).toFixed(1))) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▼</button>
+                      <button type="button" onClick={() => updateSettings({ verticalOffset: Math.min(25, parseFloat((vOffset + 0.5).toFixed(1))) })} style={{ width: '26px', height: '24px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>▼</button>
                     </div>
-                    <div style={{ fontSize: '9px', color: '#64748b', marginTop: '1px' }}>Adjusts top feed margin before printing</div>
+                    <div style={{ fontSize: '9px', color: '#64748b', marginTop: '3px' }}>Space before top of receipt</div>
                   </div>
 
-                  {/* 3. Printable Width */}
+                  {/* 3. Content Width */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Print Width:</span>
+                      <span>Printable Width:</span>
                       <span style={{ color: '#2563eb' }}>{contentWidth} mm</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -722,14 +774,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                       <input 
                         type="range" 
                         min="34" 
-                        max="54" 
+                        max="48" 
                         step="1" 
                         value={contentWidth} 
                         onChange={e => updateSettings({ contentWidth: parseInt(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ contentWidth: Math.min(54, contentWidth + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
+                      <button type="button" onClick={() => updateSettings({ contentWidth: Math.min(48, contentWidth + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
                     </div>
+                    <div style={{ fontSize: '9px', color: '#64748b', marginTop: '1px' }}>42mm is optimal for 58mm rolls</div>
                   </div>
 
                   {/* 4. Font Size Scale */}
@@ -741,27 +794,10 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     <input 
                       type="range" 
                       min="80" 
-                      max="150" 
+                      max="140" 
                       step="5" 
                       value={settings.fontScale} 
                       onChange={e => updateSettings({ fontScale: parseInt(e.target.value) })}
-                      style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }} 
-                    />
-                  </div>
-
-                  {/* 5. Item Gap */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Item Line Gap:</span>
-                      <span style={{ color: '#2563eb' }}>{settings.itemSpacing} mm</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.2" 
-                      max="3.0" 
-                      step="0.1" 
-                      value={settings.itemSpacing} 
-                      onChange={e => updateSettings({ itemSpacing: parseFloat(e.target.value) })}
                       style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }} 
                     />
                   </div>
@@ -776,7 +812,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                       onChange={e => updateSettings({ showLogo: e.target.checked })} 
                       style={{ accentColor: '#2563eb' }}
                     />
-                    <span>Store Logo</span>
+                    <span>Brand Logo</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: 600 }}>
                     <input 
@@ -785,7 +821,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                       onChange={e => updateSettings({ showStoreHeader: e.target.checked })} 
                       style={{ accentColor: '#2563eb' }}
                     />
-                    <span>Showroom Header</span>
+                    <span>Showroom Info</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: 600 }}>
                     <input 
@@ -814,92 +850,80 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     />
                     <span>Product Code (SKU)</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: 600 }}>
-                    <input 
-                      type="checkbox" 
-                      checked={settings.showPaymentBreakdown} 
-                      onChange={e => updateSettings({ showPaymentBreakdown: e.target.checked })} 
-                      style={{ accentColor: '#2563eb' }}
-                    />
-                    <span>Payment Breakdown</span>
-                  </label>
                 </div>
               </>
             )}
 
+            {/* TAB 2: Logo Size & Clarity */}
             {activeTab === 'logo' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-                  {/* Logo Size */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  {/* Logo Width */}
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Logo Size / Scale:</span>
-                      <span style={{ color: '#2563eb', fontWeight: 800 }}>{logoSize} px</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '2px' }}>
+                      <span>Logo Display Width:</span>
+                      <span style={{ color: '#2563eb', fontWeight: 900 }}>{logoSize} px</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <button type="button" onClick={() => updateSettings({ logoSize: Math.max(20, logoSize - 5) })} style={{ width: '26px', height: '24px', fontSize: '12px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>-</button>
+                      <button type="button" onClick={() => updateSettings({ logoSize: Math.max(50, logoSize - 10) })} style={{ width: '28px', height: '24px', fontSize: '12px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>-</button>
                       <input 
                         type="range" 
-                        min="25" 
-                        max="120" 
-                        step="2" 
+                        min="60" 
+                        max="220" 
+                        step="5" 
                         value={logoSize} 
                         onChange={e => updateSettings({ logoSize: parseInt(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ logoSize: Math.min(130, logoSize + 5) })} style={{ width: '26px', height: '24px', fontSize: '12px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
+                      <button type="button" onClick={() => updateSettings({ logoSize: Math.min(220, logoSize + 10) })} style={{ width: '28px', height: '24px', fontSize: '12px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                      <button type="button" onClick={() => updateSettings({ logoSize: 42 })} style={{ flex: 1, padding: '2px', fontSize: '9.5px', border: '1px solid #cbd5e1', borderRadius: '3px', background: logoSize === 42 ? '#eff6ff' : '#fff' }}>Small (42px)</button>
-                      <button type="button" onClick={() => updateSettings({ logoSize: 58 })} style={{ flex: 1, padding: '2px', fontSize: '9.5px', border: '1px solid #cbd5e1', borderRadius: '3px', background: logoSize === 58 ? '#eff6ff' : '#fff', fontWeight: 700, color: '#2563eb' }}>Medium (58px)</button>
-                      <button type="button" onClick={() => updateSettings({ logoSize: 75 })} style={{ flex: 1, padding: '2px', fontSize: '9.5px', border: '1px solid #cbd5e1', borderRadius: '3px', background: logoSize === 75 ? '#eff6ff' : '#fff' }}>Large (75px)</button>
+                      <button type="button" onClick={() => updateSettings({ logoSize: 90 })} style={{ flex: 1, padding: '2px', fontSize: '9.5px', border: '1px solid #cbd5e1', borderRadius: '3px', background: logoSize === 90 ? '#eff6ff' : '#fff' }}>Small (90px)</button>
+                      <button type="button" onClick={() => updateSettings({ logoSize: 135 })} style={{ flex: 1, padding: '2px', fontSize: '9.5px', border: '1px solid #cbd5e1', borderRadius: '3px', background: logoSize === 135 ? '#eff6ff' : '#fff', fontWeight: 700, color: '#2563eb' }}>Medium (135px)</button>
+                      <button type="button" onClick={() => updateSettings({ logoSize: 170 })} style={{ flex: 1, padding: '2px', fontSize: '9.5px', border: '1px solid #cbd5e1', borderRadius: '3px', background: logoSize === 170 ? '#eff6ff' : '#fff' }}>Large (170px)</button>
                     </div>
                   </div>
 
-                  {/* Logo Contrast for Thermal Black & White */}
+                  {/* Thermal Contrast Threshold */}
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                      <span>Thermal Contrast / Sharpness:</span>
-                      <span style={{ color: '#2563eb', fontWeight: 800 }}>{logoContrast}%</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '2px' }}>
+                      <span>Thermal Black/White Cleanliness:</span>
+                      <span style={{ color: '#2563eb', fontWeight: 900 }}>{settings.logoThreshold || 210}</span>
                     </div>
                     <input 
                       type="range" 
-                      min="100" 
-                      max="200" 
-                      step="10" 
-                      value={logoContrast} 
-                      onChange={e => updateSettings({ logoContrast: parseInt(e.target.value) })}
+                      min="140" 
+                      max="245" 
+                      step="5" 
+                      value={settings.logoThreshold || 210} 
+                      onChange={e => updateSettings({ logoThreshold: parseInt(e.target.value) })}
                       style={{ width: '100%', accentColor: '#2563eb', cursor: 'pointer' }} 
                     />
                     <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>
-                      Enhances dark lines on Rongta thermal head
+                      Filters out cream background &amp; keeps text deep pure black
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', background: '#ffffff', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569' }}>Current Logo Preview:</span>
+                {/* Logo Live Sample */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                   <img 
-                    src={logoImg} 
+                    src={monochromeLogo || logoImg} 
                     alt="Logo preview" 
                     style={{ 
                       width: `${logoSize}px`, 
-                      height: `${logoSize}px`, 
+                      maxWidth: '100%', 
+                      height: 'auto', 
                       objectFit: 'contain', 
-                      borderRadius: '4px', 
-                      filter: `grayscale(100%) contrast(${logoContrast}%)`,
-                      border: '1px dashed #cbd5e1',
-                      padding: '2px'
+                      display: 'block'
                     }} 
                   />
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>
-                    Render size: {logoSize} × {logoSize} px (Crisp Black &amp; White Mode)
-                  </div>
                 </div>
               </div>
             )}
 
-            {activeTab === 'showroom' && (
+            {/* TAB 3: Showroom Information */}
+            {activeTab === 'text' && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
@@ -966,7 +990,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           </div>
         )}
 
-        {/* Live Preview of 58mm Receipt */}
+        {/* Live Preview of 58mm Thermal Receipt */}
         <div style={{
           flex: 1,
           maxHeight: '430px',
@@ -981,35 +1005,35 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           justifyContent: 'flex-start'
         }}>
           {/* Label indicating physical 58mm roll boundary */}
-          <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>
-            58mm Thermal Roll Simulation (Print Width: {contentWidth}mm | Left Offset: {calculatedLeftMargin.toFixed(1)}mm)
+          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+            58mm Physical Paper Roll (Left Margin: <strong>{leftShift}mm</strong> | Width: <strong>{contentWidth}mm</strong>)
           </div>
 
-          {/* Outer roll wrapper — simulates 58mm physical paper roll width */}
+          {/* Outer roll wrapper — exactly 232px simulates 58mm roll width (4px/mm) */}
           <div style={{
-            width: '240px',
+            width: '232px',
             flexShrink: 0,
             display: 'flex',
             justifyContent: 'flex-start',
             backgroundColor: '#e2e8f0',
-            border: '1px solid #cbd5e1',
+            border: '2px solid #94a3b8',
             borderRadius: '4px',
-            paddingLeft: `${Math.max(0, calculatedLeftMargin * 4.1)}px`,
-            paddingTop: `${Math.max(0, vOffset * 3.5)}px`,
+            paddingLeft: `${leftShift * 4}px`,
+            paddingTop: `${vOffset * 4}px`,
             paddingBottom: '16px',
             boxSizing: 'border-box'
           }}>
-            {/* Simulated content area, centered with exact left offset */}
+            {/* Simulated content area */}
             <div style={{
-              width: `${Math.round(contentWidth * 4.1)}px`,
-              maxWidth: '230px',
+              width: `${contentWidth * 4}px`,
+              maxWidth: '220px',
               backgroundColor: '#ffffff',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
-              borderRadius: '3px',
-              paddingTop: '8px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+              borderRadius: '2px',
+              paddingTop: '6px',
               paddingBottom: '12px',
-              paddingLeft: '8px',
-              paddingRight: '8px',
+              paddingLeft: '6px',
+              paddingRight: '6px',
               fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
               fontSize: `${baseFontSize}px`,
               fontWeight: 700,
@@ -1022,14 +1046,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 <div style={{ textAlign: 'center', borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px' }}>
                   {settings.showLogo && (
                     <img 
-                      src={logoImg} 
+                      src={monochromeLogo || logoImg} 
                       alt="Logo" 
                       style={{ 
-                        width: `${logoSize}px`, 
-                        height: `${logoSize}px`, 
+                        width: `${Math.min(contentWidth * 4 - 8, logoSize * 0.9)}px`, 
+                        maxWidth: '100%', 
+                        height: 'auto', 
                         objectFit: 'contain', 
-                        borderRadius: '4px', 
-                        filter: `grayscale(100%) contrast(${logoContrast}%)`, 
                         display: 'block', 
                         margin: '0 auto 4px auto' 
                       }} 
@@ -1053,7 +1076,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 <div style={{ fontSize: `${baseFontSize * 0.9}px`, fontWeight: 700, borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px', color: '#000000' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>INV: <strong>{data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
-                    <span>${new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
+                    <span>{new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
                   </div>
                   {settings.showCustomerPhone && data.customerPhone && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
@@ -1090,7 +1113,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                         </div>
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000' }}>
-                        <span>{item.quantity} × ৳{item.unitPrice.toFixed(0)}</span>
+                        <span>{item.quantity} × ৳${item.unitPrice.toFixed(0)}</span>
                         <span style={{ fontWeight: 900, flexShrink: 0, paddingLeft: '4px' }}>৳{item.totalPrice.toFixed(0)}</span>
                       </div>
                     </div>
@@ -1145,13 +1168,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     {data.dueAmount > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, color: '#000000' }}>
                         <span>DUE:</span>
-                        <span>৳{data.dueAmount.toFixed(0)}</span>
+                        <span>৳${data.dueAmount.toFixed(0)}</span>
                       </div>
                     )}
                     {data.changeAmount > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', color: '#000000', fontWeight: 800 }}>
                         <span>Change:</span>
-                        <span>৳{data.changeAmount.toFixed(0)}</span>
+                        <span>৳${data.changeAmount.toFixed(0)}</span>
                       </div>
                     )}
                   </>
