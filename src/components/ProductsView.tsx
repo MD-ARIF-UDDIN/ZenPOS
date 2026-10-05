@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2, Tag, Printer, Search, Edit3, Boxes, Check, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Tag, Printer, Search, Edit3, Boxes, Check, ChevronDown, X } from 'lucide-react';
 import { BarcodeLabelModal, printVariantsBatchLabels } from './BarcodeLabelModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { Pagination } from './Pagination';
@@ -541,6 +541,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [prodPageSize, setProdPageSize] = useState(8);
   const [varPage, setVarPage] = useState(1);
   const [varPageSize, setVarPageSize] = useState(10);
+
+  // Variant Search & View Mode states
+  const [viewMode, setViewMode] = useState<'catalog' | 'all_variants'>('catalog');
+  const [variantSearch, setVariantSearch] = useState('');
+  const [globalVariantSearch, setGlobalVariantSearch] = useState('');
+  const [globalVarPage, setGlobalVarPage] = useState(1);
+  const [globalVarPageSize, setGlobalVarPageSize] = useState(15);
+  const [globalCategoryFilter, setGlobalCategoryFilter] = useState('');
+  const [globalLowStockOnly, setGlobalLowStockOnly] = useState(false);
 
   // Forms states (Product Create & Edit)
   const [showProductModal, setShowProductModal] = useState(false);
@@ -1109,9 +1118,29 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     );
   };
 
-  // Filter variants for selected product
+  // Filter variants for selected product (supports searching by SKU, barcode, size, color, price, stock)
   const activeVariants = variants.filter(v => v.product_id === activeProduct?.id);
-  const paginatedVariants = activeVariants.slice((varPage - 1) * varPageSize, varPage * varPageSize);
+  const filteredActiveVariants = activeVariants.filter(v => {
+    if (!variantSearch.trim()) return true;
+    const q = variantSearch.trim().toLowerCase();
+    const rawQ = q.replace(/-/g, '');
+    const bc = (v.barcode || '').toLowerCase();
+    const rawBc = bc.replace(/-/g, '');
+    const sku = (v.sku || '').toLowerCase();
+    const size = (v.size || '').toLowerCase();
+    const color = (v.color || '').toLowerCase();
+
+    return (
+      sku.includes(q) ||
+      bc.includes(q) ||
+      rawBc.includes(rawQ) ||
+      size.includes(q) ||
+      color.includes(q) ||
+      String(v.selling_price).includes(q) ||
+      String(v.stock_quantity).includes(q)
+    );
+  });
+  const paginatedVariants = filteredActiveVariants.slice((varPage - 1) * varPageSize, varPage * varPageSize);
 
   // Filter products by search (Supports Name, Category, Brand, SKU, and Barcode Scanning)
   const filteredProducts = products.filter(p => {
@@ -1141,6 +1170,45 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   });
   const paginatedProducts = filteredProducts.slice((prodPage - 1) * prodPageSize, prodPage * prodPageSize);
 
+  // Global variants filter across all mother products
+  const filteredGlobalVariants = variants.filter(v => {
+    const parentProd = products.find(p => p.id === v.product_id);
+    if (globalCategoryFilter && parentProd?.category !== globalCategoryFilter) {
+      return false;
+    }
+    if (globalLowStockOnly && v.stock_quantity > v.min_stock_level) {
+      return false;
+    }
+    if (!globalVariantSearch.trim()) return true;
+    const q = globalVariantSearch.trim().toLowerCase();
+    const rawQ = q.replace(/-/g, '');
+    const bc = (v.barcode || '').toLowerCase();
+    const rawBc = bc.replace(/-/g, '');
+    const sku = (v.sku || '').toLowerCase();
+    const size = (v.size || '').toLowerCase();
+    const color = (v.color || '').toLowerCase();
+    const prodName = (parentProd?.name || '').toLowerCase();
+    const prodBrand = (parentProd?.brand || '').toLowerCase();
+    const prodCat = (parentProd?.category || '').toLowerCase();
+
+    return (
+      prodName.includes(q) ||
+      prodBrand.includes(q) ||
+      prodCat.includes(q) ||
+      sku.includes(q) ||
+      bc.includes(q) ||
+      rawBc.includes(rawQ) ||
+      size.includes(q) ||
+      color.includes(q) ||
+      String(v.selling_price).includes(q) ||
+      String(v.stock_quantity).includes(q)
+    );
+  });
+  const paginatedGlobalVariants = filteredGlobalVariants.slice(
+    (globalVarPage - 1) * globalVarPageSize,
+    globalVarPage * globalVarPageSize
+  );
+
   const handleBarcodeOrSearchSubmit = (val: string) => {
     const q = val.trim();
     if (!q) return;
@@ -1165,398 +1233,687 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   };
 
   return (
-    <div className="products-layout" style={{ alignItems: 'start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       
-      {/* Product List */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: 'calc(100vh - 110px)', overflowY: 'auto', padding: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>Products</h3>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredProducts.length} items cataloged</span>
-          </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <button className="btn btn-primary btn-sm" style={{ padding: '4px 10px' }} onClick={handleOpenAddProduct}>
-              <Plus size={14} /> Add Product
-            </button>
-          </div>
-        </div>
-
-        {/* Product & Barcode Search */}
-        <div style={{ position: 'relative' }}>
-          <Search size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-          <input 
-            type="text" 
-            className="form-control" 
-            placeholder="Search name, brand, or scan barcode..."
-            value={prodSearch}
-            onChange={(e) => {
-              const val = e.target.value;
-              setProdSearch(val);
-              setProdPage(1);
-              if (val.length >= 8) {
-                const rawVal = val.trim().replace(/-/g, '');
-                const found = variants.find(v => (v.barcode && (v.barcode.replace(/-/g, '') === rawVal || v.barcode === val.trim())));
-                if (found) {
-                  const parent = products.find(p => p.id === found.product_id);
-                  if (parent && parent.id !== activeProduct?.id) {
-                    setActiveProduct(parent);
-                  }
-                }
-              }
+      {/* Top Mode Navigation Switcher */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+          <button
+            type="button"
+            onClick={() => setViewMode('catalog')}
+            style={{
+              padding: '6px 14px',
+              fontSize: '12.5px',
+              fontWeight: 700,
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: viewMode === 'catalog' ? 'var(--color-primary)' : 'transparent',
+              color: viewMode === 'catalog' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleBarcodeOrSearchSubmit(prodSearch);
-              }
+          >
+            📁 Mother Products Catalog ({products.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('all_variants')}
+            style={{
+              padding: '6px 14px',
+              fontSize: '12.5px',
+              fontWeight: 700,
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: viewMode === 'all_variants' ? 'var(--color-primary)' : 'transparent',
+              color: viewMode === 'all_variants' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
             }}
-            style={{ paddingLeft: '28px', height: '32px', fontSize: '12px' }}
-          />
+          >
+            🏷️ All Variants Directory ({variants.length})
+          </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
-          {paginatedProducts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-              No matching products found.
-            </div>
-          ) : (
-            paginatedProducts.map(p => {
-              const count = variants.filter(v => v.product_id === p.id).length;
-              const isSelected = activeProduct?.id === p.id;
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => {
-                    setActiveProduct(p);
-                    setVarPage(1);
-                  }}
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    backgroundColor: isSelected ? 'var(--color-primary-light)' : 'transparent',
-                    border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
-                    cursor: 'pointer',
-                    transition: 'all var(--transition-fast)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: '12.5px', color: isSelected ? 'var(--color-primary)' : 'var(--text-primary)', maxWidth: '170px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {p.name}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
-                        {p.category || 'General'}
-                      </span>
-                      {p.rent_price !== undefined && p.rent_price !== null && (
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '1px 5px', borderRadius: '4px' }}>
-                          Rent: ৳{Number(p.rent_price).toFixed(0)}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenEditProduct(p);
-                        }}
-                        title="Edit product details"
-                        style={{ background: 'none', border: 'none', padding: '2px', cursor: 'pointer', color: 'var(--text-muted)' }}
-                      >
-                        <Edit3 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    <span>{p.brand || 'No brand'}</span>
-                    <span style={{ fontSize: '10.5px', color: count > 0 ? 'var(--color-primary)' : '#94a3b8', fontWeight: 600 }}>
-                      {count} {count === 1 ? 'Variant' : 'Variants'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button className="btn btn-primary btn-sm" style={{ padding: '6px 14px' }} onClick={handleOpenAddProduct}>
+            <Plus size={15} /> Add New Product
+          </button>
         </div>
-
-        {filteredProducts.length > 0 && (
-          <Pagination 
-            currentPage={prodPage}
-            totalItems={filteredProducts.length}
-            pageSize={prodPageSize}
-            onPageChange={setProdPage}
-            onPageSizeChange={setProdPageSize}
-            pageSizeOptions={[8, 15, 25, 50, 100]}
-          />
-        )}
       </div>
 
-      {/* Selected Product Variants Panel */}
-      <div className="card" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
-        {activeProduct ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-              <div>
-                <h2 style={{ margin: 0 }}>{activeProduct.name}</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  Category: <span style={{ color: 'var(--text-primary)' }}>{activeProduct.category || 'N/A'}</span> | 
-                  Brand: <span style={{ color: 'var(--text-primary)' }}>{activeProduct.brand || 'N/A'}</span>
-                  {activeProduct.rent_price !== undefined && activeProduct.rent_price !== null && (
-                    <> | Rent Price: <span style={{ color: '#059669', fontWeight: 800 }}>৳{Number(activeProduct.rent_price).toFixed(2)}</span></>
-                  )}
-                </p>
-                {activeProduct.description && (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '6px' }}>{activeProduct.description}</p>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={() => handleOpenEditProduct(activeProduct)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
-                  title="Edit Product Details"
-                >
-                  <Edit3 size={15} /> Edit Product
-                </button>
-                {activeVariants.length > 0 && (
-                  <button 
-                    className="btn btn-secondary" 
-                    onClick={() => setAdjustingStockVariant(activeVariants[0])}
-                    style={{ border: '1.5px solid #86efac', color: '#166534', backgroundColor: '#f0fdf4', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-                    title="Adjust Stock"
-                  >
-                    <Boxes size={16} /> Adjust Stock
-                  </button>
-                )}
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={handleOpenAddVariant}
-                  style={{ border: '1px solid var(--color-primary)', color: 'var(--color-primary)' }}
-                >
-                  <Plus size={16} /> Add Variant
-                </button>
-                <button className="btn btn-danger" style={{ padding: '8px' }} onClick={() => handleDeleteProduct(activeProduct.id)} disabled={deletingProductId === activeProduct.id} title="Delete Product">
-                   {deletingProductId === activeProduct.id ? 'Deleting...' : <Trash2 size={16} />}
-                </button>
-              </div>
+      {viewMode === 'all_variants' ? (
+        /* ================= ALL VARIANTS DIRECTORY VIEW ================= */
+        <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                All Product Variants Directory ({filteredGlobalVariants.length} of {variants.length})
+              </h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Search and manage every individual size/color variant, barcode, SKU, and stock level
+              </p>
             </div>
 
-            <div>
-              <h4 style={{ marginBottom: '12px', fontSize: '15px' }}>Sizes, Colors & Barcodes ({activeVariants.length})</h4>
-              
-              {/* Desktop Table View */}
-              <div className="desktop-cart-table table-container">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
-                      <th>SKU</th>
-                      <th>Barcode</th>
-                      <th>Size</th>
-                      <th>Color</th>
-                      <th>Cost</th>
-                      <th>Price</th>
-                      {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
-                        <th style={{ color: '#166534', backgroundColor: '#f0fdf4' }}>Rent Price</th>
-                      )}
-                      <th>Stock</th>
-                      <th style={{ width: '210px', textAlign: 'center' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeVariants.length === 0 ? (
-                      <tr>
-                        <td colSpan={((activeProduct?.category || '').toLowerCase().includes('sherwani')) ? 10 : 9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
-                          No variants defined yet. Add a size/color variant to start tracking stock & barcodes.
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedVariants.map((v, idx) => (
-                        <tr key={v.id}>
-                          <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
-                            {(varPage - 1) * varPageSize + idx + 1}
-                          </td>
-                          <td style={{ fontWeight: 'bold' }}>{v.sku}</td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Tag size={12} style={{ color: 'var(--color-primary)' }} />
-                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{v.barcode}</span>
-                            </div>
-                          </td>
-                          <td>{v.size}</td>
-                          <td>{v.color}</td>
-                          <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
-                          <td>৳{(v.selling_price ?? 0).toFixed(2)}</td>
-                          {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
-                            <td style={{ fontWeight: 800, color: '#166534', backgroundColor: '#f0fdf4' }}>
-                              ৳{(v.rent_price ?? 0).toFixed(2)}
-                            </td>
-                          )}
-                          <td>
-                            <button
-                              type="button"
-                              onClick={() => setAdjustingStockVariant(v)}
-                              title="Click to adjust stock"
-                              style={{
-                                border: '1px solid',
-                                borderColor: v.stock_quantity <= v.min_stock_level ? '#fca5a5' : '#86efac',
-                                background: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                                color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
-                                fontWeight: 800,
-                                padding: '4px 12px',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                fontSize: '12.5px'
-                              }}
-                            >
-                              {v.stock_quantity}
-                            </button>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
-                                onClick={() => setAdjustingStockVariant(v)}
-                                title="Adjust Stock"
-                              >
-                                <Boxes size={12} /> Stock
-                              </button>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                                onClick={() => handleOpenEditVariant(v)}
-                                title="Edit Variant Details"
-                              >
-                                <Edit3 size={12} /> Edit
-                              </button>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                                onClick={() => setBarcodeVariantModal(v)}
-                                title="Print Physical Barcode Sticker"
-                              >
-                                <Printer size={12} />
-                              </button>
-                              <button 
-                                className="btn btn-danger" 
-                                style={{ padding: '6px' }} 
-                                onClick={() => handleDeleteVariant(v.id)} 
-                                disabled={deletingVariantId === v.id}
-                                title="Delete variant"
-                              >
-                                {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-                <Pagination 
-                  currentPage={varPage}
-                  totalItems={activeVariants.length}
-                  pageSize={varPageSize}
-                  onPageChange={setVarPage}
-                  onPageSizeChange={setVarPageSize}
+            {/* Filters Bar */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Search Variant Input */}
+              <div style={{ position: 'relative', width: '280px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Search SKU, barcode, size, color, product..."
+                  value={globalVariantSearch}
+                  onChange={e => {
+                    setGlobalVariantSearch(e.target.value);
+                    setGlobalVarPage(1);
+                  }}
+                  style={{ paddingLeft: '32px', height: '34px', fontSize: '12.5px' }}
                 />
+                {globalVariantSearch && (
+                  <button
+                    type="button"
+                    onClick={() => { setGlobalVariantSearch(''); setGlobalVarPage(1); }}
+                    style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
 
-              {/* Mobile Cards View */}
-              <div className="mobile-cart-list" style={{ flexDirection: 'column', gap: '12px' }}>
-                {activeVariants.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    No variants defined yet. Add a size/color variant to start tracking stock.
-                  </div>
+              {/* Category Filter */}
+              <select
+                className="form-control"
+                value={globalCategoryFilter}
+                onChange={e => {
+                  setGlobalCategoryFilter(e.target.value);
+                  setGlobalVarPage(1);
+                }}
+                style={{ height: '34px', fontSize: '12px', width: '150px' }}
+              >
+                <option value="">All Categories</option>
+                {GENTS_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+
+              {/* Low Stock Filter Toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <input
+                  type="checkbox"
+                  checked={globalLowStockOnly}
+                  onChange={e => {
+                    setGlobalLowStockOnly(e.target.checked);
+                    setGlobalVarPage(1);
+                  }}
+                  style={{ accentColor: 'var(--color-danger)' }}
+                />
+                <span>Low Stock</span>
+              </label>
+
+            </div>
+          </div>
+
+          {/* Global Variants Table */}
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-primary)' }}>
+                  <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
+                  <th>Mother Product</th>
+                  <th>SKU</th>
+                  <th>Barcode</th>
+                  <th>Size</th>
+                  <th>Color</th>
+                  <th>Cost (৳)</th>
+                  <th>Price (৳)</th>
+                  <th>Rent (৳)</th>
+                  <th>Stock</th>
+                  <th style={{ width: '200px', textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedGlobalVariants.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
+                      No variants found matching your search.
+                    </td>
+                  </tr>
                 ) : (
-                  paginatedVariants.map(v => {
-                    const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+                  paginatedGlobalVariants.map((v, idx) => {
+                    const parentProd = products.find(p => p.id === v.product_id);
                     return (
-                      <div className="card" key={v.id} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'none' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--color-primary)' }}>{v.sku}</span>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button 
-                              className="btn btn-secondary" 
-                              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                      <tr key={v.id}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {(globalVarPage - 1) * globalVarPageSize + idx + 1}
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, fontSize: '13px' }}>
+                            {parentProd?.name || 'Unknown Product'}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {parentProd?.category || 'General'} {parentProd?.brand ? `• ${parentProd.brand}` : ''}
+                          </div>
+                        </td>
+                        <td style={{ fontWeight: 700 }}>{v.sku}</td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <Tag size={12} style={{ color: 'var(--color-primary)' }} />
+                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{v.barcode}</span>
+                          </div>
+                        </td>
+                        <td><span style={{ fontWeight: 600 }}>{v.size || 'N/A'}</span></td>
+                        <td>{v.color || 'N/A'}</td>
+                        <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
+                        <td style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</td>
+                        <td>
+                          {v.rent_price ? (
+                            <span style={{ fontWeight: 800, color: '#166534' }}>৳{Number(v.rent_price).toFixed(2)}</span>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => setAdjustingStockVariant(v)}
+                            title="Click to adjust stock"
+                            style={{
+                              border: '1px solid',
+                              borderColor: v.stock_quantity <= v.min_stock_level ? '#fca5a5' : '#86efac',
+                              background: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                              color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
+                              fontWeight: 800,
+                              padding: '3px 10px',
+                              borderRadius: '5px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            {v.stock_quantity}
+                          </button>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }}
                               onClick={() => setAdjustingStockVariant(v)}
                               title="Adjust Stock"
                             >
                               <Boxes size={12} /> Stock
                             </button>
-                            <button 
-                              className="btn btn-secondary" 
-                              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
                               onClick={() => handleOpenEditVariant(v)}
-                              title="Edit Details"
+                              title="Edit Variant Details"
                             >
                               <Edit3 size={12} /> Edit
                             </button>
-                            <button 
-                              className="btn btn-secondary" 
-                              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
                               onClick={() => setBarcodeVariantModal(v)}
+                              title="Print Physical Barcode Sticker"
                             >
                               <Printer size={12} />
                             </button>
-                            <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
+                            <button
+                              className="btn btn-danger"
+                              style={{ padding: '5px' }}
+                              onClick={() => handleDeleteVariant(v.id)}
+                              disabled={deletingVariantId === v.id}
+                              title="Delete variant"
+                            >
                               {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
                             </button>
                           </div>
-                        </div>
-                        
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          <span>BC: <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{v.barcode}</span></span>
-                          <span>Size/Color: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v.size} / {v.color}</span></span>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', flexWrap: 'wrap', gap: '6px' }}>
-                          <div>Cost: <span style={{ fontWeight: 700 }}>৳{(v.purchase_price ?? 0).toFixed(2)}</span></div>
-                          <div>Price: <span style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</span></div>
-                          {isSherwani && (
-                            <div style={{ color: '#166534', fontWeight: 800 }}>Rent: ৳{(v.rent_price ?? 0).toFixed(2)}</div>
-                          )}
-                          
-                          <button
-                            type="button"
-                            onClick={() => setAdjustingStockVariant(v)}
-                            style={{
-                              border: '1px solid #86efac',
-                              fontWeight: 800,
-                              padding: '3px 10px',
-                              borderRadius: '5px',
-                              fontSize: '11.5px',
-                              backgroundColor: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                              color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Stock: {v.stock_quantity}
-                          </button>
-                        </div>
-                      </div>
+                        </td>
+                      </tr>
                     );
                   })
                 )}
-                <Pagination 
-                  currentPage={varPage}
-                  totalItems={activeVariants.length}
-                  pageSize={varPageSize}
-                  onPageChange={setVarPage}
-                  onPageSizeChange={setVarPageSize}
-                />
+              </tbody>
+            </table>
+            <Pagination
+              currentPage={globalVarPage}
+              totalItems={filteredGlobalVariants.length}
+              pageSize={globalVarPageSize}
+              onPageChange={setGlobalVarPage}
+              onPageSizeChange={setGlobalVarPageSize}
+              pageSizeOptions={[10, 15, 25, 50, 100]}
+            />
+          </div>
+        </div>
+      ) : (
+        /* ================= TWO-COLUMN MOTHER PRODUCTS CATALOG VIEW ================= */
+        <div className="products-layout" style={{ alignItems: 'start' }}>
+          
+          {/* Product List */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: 'calc(100vh - 150px)', overflowY: 'auto', padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>Mother Products</h3>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredProducts.length} items cataloged</span>
               </div>
-
             </div>
+
+            {/* Product & Barcode Search */}
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input 
+                type="text" 
+                className="form-control" 
+                placeholder="Search mother product name, brand, or barcode..."
+                value={prodSearch}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProdSearch(val);
+                  setProdPage(1);
+                  if (val.length >= 8) {
+                    const rawVal = val.trim().replace(/-/g, '');
+                    const found = variants.find(v => (v.barcode && (v.barcode.replace(/-/g, '') === rawVal || v.barcode === val.trim())));
+                    if (found) {
+                      const parent = products.find(p => p.id === found.product_id);
+                      if (parent && parent.id !== activeProduct?.id) {
+                        setActiveProduct(parent);
+                      }
+                    }
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleBarcodeOrSearchSubmit(prodSearch);
+                  }
+                }}
+                style={{ paddingLeft: '28px', height: '32px', fontSize: '12px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
+              {paginatedProducts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                  No matching mother products found.
+                </div>
+              ) : (
+                paginatedProducts.map(p => {
+                  const count = variants.filter(v => v.product_id === p.id).length;
+                  const isSelected = activeProduct?.id === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setActiveProduct(p);
+                        setVarPage(1);
+                        setVariantSearch('');
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: isSelected ? 'var(--color-primary-light)' : 'transparent',
+                        border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition-fast)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: '12.5px', color: isSelected ? 'var(--color-primary)' : 'var(--text-primary)', maxWidth: '170px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {p.name}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
+                            {p.category || 'General'}
+                          </span>
+                          {p.rent_price !== undefined && p.rent_price !== null && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '1px 5px', borderRadius: '4px' }}>
+                              Rent: ৳{Number(p.rent_price).toFixed(0)}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditProduct(p);
+                            }}
+                            title="Edit product details"
+                            style={{ background: 'none', border: 'none', padding: '2px', cursor: 'pointer', color: 'var(--text-muted)' }}
+                          >
+                            <Edit3 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <span>{p.brand || 'No brand'}</span>
+                        <span style={{ fontSize: '10.5px', color: count > 0 ? 'var(--color-primary)' : '#94a3b8', fontWeight: 600 }}>
+                          {count} {count === 1 ? 'Variant' : 'Variants'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {filteredProducts.length > 0 && (
+              <Pagination 
+                currentPage={prodPage}
+                totalItems={filteredProducts.length}
+                pageSize={prodPageSize}
+                onPageChange={setProdPage}
+                onPageSizeChange={setProdPageSize}
+                pageSizeOptions={[8, 15, 25, 50, 100]}
+              />
+            )}
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
-            No Product Selected. Create a product from the sidebar to begin.
+
+          {/* Selected Product Variants Panel */}
+          <div className="card" style={{ maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' }}>
+            {activeProduct ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '20px' }}>{activeProduct.name}</h2>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '4px 0 0 0' }}>
+                      Category: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{activeProduct.category || 'N/A'}</span> | 
+                      Brand: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{activeProduct.brand || 'N/A'}</span>
+                      {activeProduct.rent_price !== undefined && activeProduct.rent_price !== null && (
+                        <> | Rent Price: <span style={{ color: '#059669', fontWeight: 800 }}>৳{Number(activeProduct.rent_price).toFixed(2)}</span></>
+                      )}
+                    </p>
+                    {activeProduct.description && (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', marginTop: '4px' }}>{activeProduct.description}</p>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button 
+                      className="btn btn-secondary btn-sm" 
+                      onClick={() => handleOpenEditProduct(activeProduct)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}
+                      title="Edit Product Details"
+                    >
+                      <Edit3 size={14} /> Edit Product
+                    </button>
+                    {activeVariants.length > 0 && (
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        onClick={() => setAdjustingStockVariant(activeVariants[0])}
+                        style={{ border: '1.5px solid #86efac', color: '#166534', backgroundColor: '#f0fdf4', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700 }}
+                        title="Adjust Stock"
+                      >
+                        <Boxes size={14} /> Adjust Stock
+                      </button>
+                    )}
+                    <button 
+                      className="btn btn-secondary btn-sm" 
+                      onClick={handleOpenAddVariant}
+                      style={{ border: '1px solid var(--color-primary)', color: 'var(--color-primary)' }}
+                    >
+                      <Plus size={14} /> Add Variant
+                    </button>
+                    <button className="btn btn-danger btn-sm" style={{ padding: '6px' }} onClick={() => handleDeleteProduct(activeProduct.id)} disabled={deletingProductId === activeProduct.id} title="Delete Product">
+                       {deletingProductId === activeProduct.id ? 'Deleting...' : <Trash2 size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  {/* Variant Search Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px' }}>
+                      Sizes, Colors &amp; Barcodes ({filteredActiveVariants.length}{variantSearch ? ` of ${activeVariants.length}` : ''})
+                    </h4>
+                    
+                    {/* Variant Specific Search Bar */}
+                    <div style={{ position: 'relative', width: '260px' }}>
+                      <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Search size, color, SKU, barcode..."
+                        value={variantSearch}
+                        onChange={e => {
+                          setVariantSearch(e.target.value);
+                          setVarPage(1);
+                        }}
+                        style={{ paddingLeft: '28px', height: '30px', fontSize: '12px' }}
+                      />
+                      {variantSearch && (
+                        <button
+                          type="button"
+                          onClick={() => { setVariantSearch(''); setVarPage(1); }}
+                          style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Desktop Table View */}
+                  <div className="desktop-cart-table table-container">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
+                          <th>SKU</th>
+                          <th>Barcode</th>
+                          <th>Size</th>
+                          <th>Color</th>
+                          <th>Cost</th>
+                          <th>Price</th>
+                          {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                            <th style={{ color: '#166534', backgroundColor: '#f0fdf4' }}>Rent Price</th>
+                          )}
+                          <th>Stock</th>
+                          <th style={{ width: '210px', textAlign: 'center' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredActiveVariants.length === 0 ? (
+                          <tr>
+                            <td colSpan={((activeProduct?.category || '').toLowerCase().includes('sherwani')) ? 10 : 9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
+                              {variantSearch ? `No variants matched "${variantSearch}".` : 'No variants defined yet. Add a size/color variant to start tracking stock & barcodes.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedVariants.map((v, idx) => (
+                            <tr key={v.id}>
+                              <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                {(varPage - 1) * varPageSize + idx + 1}
+                              </td>
+                              <td style={{ fontWeight: 'bold' }}>{v.sku}</td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Tag size={12} style={{ color: 'var(--color-primary)' }} />
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{v.barcode}</span>
+                                </div>
+                              </td>
+                              <td>{v.size}</td>
+                              <td>{v.color}</td>
+                              <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
+                              <td>৳{(v.selling_price ?? 0).toFixed(2)}</td>
+                              {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                                <td style={{ fontWeight: 800, color: '#166534', backgroundColor: '#f0fdf4' }}>
+                                  ৳{(v.rent_price ?? 0).toFixed(2)}
+                                </td>
+                              )}
+                              <td>
+                                <button
+                                  type="button"
+                                  onClick={() => setAdjustingStockVariant(v)}
+                                  title="Click to adjust stock"
+                                  style={{
+                                    border: '1px solid',
+                                    borderColor: v.stock_quantity <= v.min_stock_level ? '#fca5a5' : '#86efac',
+                                    background: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                    color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
+                                    fontWeight: 800,
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '12.5px'
+                                  }}
+                                >
+                                  {v.stock_quantity}
+                                </button>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                  <button 
+                                    className="btn btn-secondary" 
+                                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                                    onClick={() => setAdjustingStockVariant(v)}
+                                    title="Adjust Stock"
+                                  >
+                                    <Boxes size={12} /> Stock
+                                  </button>
+                                  <button 
+                                    className="btn btn-secondary" 
+                                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                    onClick={() => handleOpenEditVariant(v)}
+                                    title="Edit Variant Details"
+                                  >
+                                    <Edit3 size={12} /> Edit
+                                  </button>
+                                  <button 
+                                    className="btn btn-secondary" 
+                                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                    onClick={() => setBarcodeVariantModal(v)}
+                                    title="Print Physical Barcode Sticker"
+                                  >
+                                    <Printer size={12} />
+                                  </button>
+                                  <button 
+                                    className="btn btn-danger" 
+                                    style={{ padding: '6px' }} 
+                                    onClick={() => handleDeleteVariant(v.id)} 
+                                    disabled={deletingVariantId === v.id}
+                                    title="Delete variant"
+                                  >
+                                    {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                    <Pagination 
+                      currentPage={varPage}
+                      totalItems={filteredActiveVariants.length}
+                      pageSize={varPageSize}
+                      onPageChange={setVarPage}
+                      onPageSizeChange={setVarPageSize}
+                    />
+                  </div>
+
+                  {/* Mobile Cards View */}
+                  <div className="mobile-cart-list" style={{ flexDirection: 'column', gap: '12px' }}>
+                    {filteredActiveVariants.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        {variantSearch ? `No variants matched "${variantSearch}".` : 'No variants defined yet.'}
+                      </div>
+                    ) : (
+                      paginatedVariants.map(v => {
+                        const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+                        return (
+                          <div className="card" key={v.id} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'none' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--color-primary)' }}>{v.sku}</span>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                                  onClick={() => setAdjustingStockVariant(v)}
+                                  title="Adjust Stock"
+                                >
+                                  <Boxes size={12} /> Stock
+                                </button>
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                  onClick={() => handleOpenEditVariant(v)}
+                                  title="Edit Details"
+                                >
+                                  <Edit3 size={12} /> Edit
+                                </button>
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                  onClick={() => setBarcodeVariantModal(v)}
+                                >
+                                  <Printer size={12} />
+                                </button>
+                                <button className="btn btn-danger" style={{ padding: '4px 6px', borderRadius: '4px' }} onClick={() => handleDeleteVariant(v.id)} disabled={deletingVariantId === v.id}>
+                                  {deletingVariantId === v.id ? '...' : <Trash2 size={12} />}
+                                </button>
+                              </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              <span>BC: <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{v.barcode}</span></span>
+                              <span>Size/Color: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v.size} / {v.color}</span></span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', flexWrap: 'wrap', gap: '6px' }}>
+                              <div>Cost: <span style={{ fontWeight: 700 }}>৳{(v.purchase_price ?? 0).toFixed(2)}</span></div>
+                              <div>Price: <span style={{ fontWeight: 700 }}>৳{(v.selling_price ?? 0).toFixed(2)}</span></div>
+                              {isSherwani && (
+                                <div style={{ color: '#166534', fontWeight: 800 }}>Rent: ৳{(v.rent_price ?? 0).toFixed(2)}</div>
+                              )}
+                              
+                              <button
+                                type="button"
+                                onClick={() => setAdjustingStockVariant(v)}
+                                style={{
+                                  border: '1px solid #86efac',
+                                  fontWeight: 800,
+                                  padding: '3px 10px',
+                                  borderRadius: '5px',
+                                  fontSize: '11.5px',
+                                  backgroundColor: v.stock_quantity <= v.min_stock_level ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                                  color: v.stock_quantity <= v.min_stock_level ? 'var(--color-danger)' : 'var(--color-success)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Stock: {v.stock_quantity}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    <Pagination 
+                      currentPage={varPage}
+                      totalItems={filteredActiveVariants.length}
+                      pageSize={varPageSize}
+                      onPageChange={setVarPage}
+                      onPageSizeChange={setVarPageSize}
+                    />
+                  </div>
+
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
+                No Product Selected. Create a product from the sidebar to begin.
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* CREATE / EDIT MOTHER PRODUCT MODAL */}
       {showProductModal && (

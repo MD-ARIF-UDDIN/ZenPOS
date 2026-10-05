@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import type { ProductVariant } from '../store';
-import { X, Trash2, Plus, Minus, Search, AlertTriangle, Save } from 'lucide-react';
+import { X, Trash2, Plus, Minus, Search, AlertTriangle, Save, Barcode, CheckCircle2 } from 'lucide-react';
 
 interface EditSaleModalProps {
   sale: any;
@@ -41,11 +41,13 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
   const [customerPhone, setCustomerPhone] = useState<string>(sale.customer_phone || '');
   const [saving, setSaving] = useState(false);
 
-  // Variant search state
+  // Variant search & scanner state
   const [variantsList, setVariantsList] = useState<ProductVariant[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<ProductVariant[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [lastScannedBarcode, setLastScannedBarcode] = useState<string | null>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Load variants to know current stock & enable adding items
@@ -84,23 +86,94 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
     loadVariantsAndInit();
   }, [sale, initialItems]);
 
-  // Handle Search
+  // Focus search input automatically on modal mount
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      setShowSearchResults(false);
-      return;
-    }
-    const q = searchQuery.toLowerCase().trim();
-    const matches = variantsList.filter((v) => {
-      const pName = v.product?.name?.toLowerCase() || '';
-      const sku = v.sku?.toLowerCase() || '';
-      const barcode = v.barcode?.toLowerCase() || '';
-      return pName.includes(q) || sku.includes(q) || barcode.includes(q);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
+  }, []);
+
+  // Barcode Map lookup memoization for instant O(1) scanner response
+  const barcodeMap = useMemo(() => {
+    const map = new Map<string, ProductVariant>();
+    variantsList.forEach((v) => {
+      if (v.barcode) {
+        const raw = v.barcode.trim();
+        const unhyphenated = raw.replace(/[\s-]/g, '');
+        map.set(raw, v);
+        map.set(raw.toLowerCase(), v);
+        map.set(unhyphenated, v);
+        map.set(unhyphenated.toLowerCase(), v);
+      }
+      if (v.sku) {
+        const rawSku = v.sku.trim();
+        const unhyphenatedSku = rawSku.replace(/[\s-]/g, '');
+        map.set(rawSku, v);
+        map.set(rawSku.toLowerCase(), v);
+        map.set(unhyphenatedSku, v);
+        map.set(unhyphenatedSku.toLowerCase(), v);
+      }
     });
-    setSearchResults(matches.slice(0, 8));
-    setShowSearchResults(true);
+    return map;
+  }, [variantsList]);
+
+  const findMatchingVariant = (queryText: string): ProductVariant | undefined => {
+    const raw = (queryText || '').trim().replace(/[\r\n\t]/g, '');
+    if (!raw) return undefined;
+    const clean = raw.replace(/[\s-]/g, '').toLowerCase();
+
+    // 1. Direct Map lookup (O(1))
+    const fromMap = barcodeMap.get(raw) || barcodeMap.get(raw.toLowerCase()) || barcodeMap.get(clean);
+    if (fromMap) return fromMap;
+
+    // 2. Exact or stripped barcode in variants list
+    const match = variantsList.find((v) => {
+      if (!v.barcode) return false;
+      const bc = v.barcode.trim().toLowerCase();
+      const cleanBc = bc.replace(/[\s-]/g, '');
+      return bc === raw.toLowerCase() || cleanBc === clean;
+    });
+    if (match) return match;
+
+    // 3. Exact SKU match
+    const skuMatch = variantsList.find((v) => {
+      if (!v.sku) return false;
+      const sku = v.sku.trim().toLowerCase();
+      return sku === raw.toLowerCase() || sku.replace(/[\s-]/g, '') === clean;
+    });
+    return skuMatch;
+  };
+
+  // Filter search results
+  const searchResults = useMemo(() => {
+    const qTrim = searchQuery.trim();
+    if (!qTrim) return [];
+    const q = qTrim.toLowerCase();
+    const cleanQ = q.replace(/[\s-]/g, '');
+
+    const matches: ProductVariant[] = [];
+    for (let i = 0; i < variantsList.length; i++) {
+      const v = variantsList[i];
+      if (
+        (v.sku && (v.sku.toLowerCase().includes(q) || v.sku.toLowerCase().replace(/[\s-]/g, '').includes(cleanQ))) ||
+        (v.barcode && (v.barcode.toLowerCase().includes(q) || v.barcode.toLowerCase().replace(/[\s-]/g, '').includes(cleanQ))) ||
+        (v.product?.name && v.product.name.toLowerCase().includes(q))
+      ) {
+        matches.push(v);
+        if (matches.length >= 10) break;
+      }
+    }
+    return matches;
   }, [searchQuery, variantsList]);
+
+  // Handle Search Input Change
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      setShowSearchResults(true);
+    } else {
+      setShowSearchResults(false);
+    }
+  }, [searchQuery]);
 
   const handleAddItem = (variant: ProductVariant) => {
     // Check if already in items
@@ -134,6 +207,90 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
     }
     setSearchQuery('');
     setShowSearchResults(false);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = '';
+    }
+    setTimeout(() => searchInputRef.current?.focus(), 10);
+  };
+
+  // Hardware scanner rapid key buffer listener
+  useEffect(() => {
+    let scanBuffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleGlobalScannerKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if user is pressing functional modal keys
+      if (e.key === 'Escape') return;
+
+      const target = e.target as HTMLElement | null;
+      const isOtherInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target !== searchInputRef.current;
+
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime;
+      lastKeyTime = currentTime;
+
+      // Reset buffer if elapsed time between keys > 90ms (scanner sends keys in ~10-40ms bursts)
+      if (timeDiff > 90) {
+        scanBuffer = '';
+      }
+
+      if (e.key === 'Enter') {
+        const rawBuffer = scanBuffer.trim();
+        const candidate = rawBuffer.length >= 3 ? rawBuffer : (searchInputRef.current?.value?.trim() || '');
+        if (candidate.length >= 2) {
+          const match = findMatchingVariant(candidate);
+          if (match) {
+            e.preventDefault();
+            e.stopPropagation();
+            setLastScannedBarcode(match.barcode || match.sku || candidate);
+            handleAddItem(match);
+            showToast(`Scanned: ${match.product?.name} (${[match.size, match.color].filter(Boolean).join('/')})`, 'success');
+            scanBuffer = '';
+            return;
+          }
+        }
+        scanBuffer = '';
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        scanBuffer += e.key;
+
+        // Redirect focus to search input if typing is fast scanner input
+        if (!isOtherInput && document.activeElement !== searchInputRef.current) {
+          searchInputRef.current?.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalScannerKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalScannerKeyDown);
+  }, [barcodeMap, variantsList, items]);
+
+  // Handle Search Input KeyDown (e.g. Enter pressed by handheld scanner)
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const raw = searchQuery.trim();
+      if (!raw) return;
+
+      // 1. Direct barcode/sku match
+      const exactMatch = findMatchingVariant(raw);
+      if (exactMatch) {
+        setLastScannedBarcode(exactMatch.barcode || exactMatch.sku || raw);
+        handleAddItem(exactMatch);
+        showToast(`Added: ${exactMatch.product?.name}`, 'success');
+        return;
+      }
+
+      // 2. If single search result is visible, pick it
+      if (searchResults.length === 1) {
+        handleAddItem(searchResults[0]);
+        showToast(`Added: ${searchResults[0].product?.name}`, 'success');
+        return;
+      }
+
+      if (searchResults.length === 0) {
+        showToast(`No product found for "${raw}"`, 'warning');
+      }
+    }
   };
 
   const handleQuantityChange = (index: number, newQty: number) => {
@@ -265,8 +422,8 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
         className="card"
         style={{
           width: '100%',
-          maxWidth: '780px',
-          maxHeight: '92vh',
+          maxWidth: '820px',
+          maxHeight: '94vh',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: 'var(--shadow-lg)',
@@ -278,7 +435,7 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
         {/* Modal Header */}
         <div
           style={{
-            padding: '16px 20px',
+            padding: '14px 20px',
             borderBottom: '1px solid var(--border-color)',
             display: 'flex',
             justifyContent: 'space-between',
@@ -320,7 +477,7 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+        <div style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
           {/* Customer & Payment Bar */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
@@ -357,21 +514,53 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
             </div>
           </div>
 
-          {/* Add Product Search Bar */}
+          {/* Barcode Scanner & Search Bar */}
           <div style={{ position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
-              Add Additional Item to Invoice
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                <Barcode size={15} style={{ color: 'var(--color-primary)' }} />
+                <span>Scan Barcode or Search Item to Add</span>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: '#16a34a', fontWeight: 600 }}>
+                <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#16a34a' }}></span>
+                <span>Scanner Active (Point &amp; Scan)</span>
+              </div>
+            </div>
+
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={15} style={{ position: 'absolute', left: '11px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
               <input
+                ref={searchInputRef}
                 type="text"
                 className="form-control"
-                placeholder="Search product by name, barcode, or SKU to add..."
+                placeholder="Scan barcode sticker with scanner gun, or type product name / SKU..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '32px', height: '34px', fontSize: '12.5px' }}
+                onKeyDown={handleSearchKeyDown}
+                style={{
+                  paddingLeft: '34px',
+                  paddingRight: '100px',
+                  height: '38px',
+                  fontSize: '13px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1.5px solid #cbd5e1',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                }}
               />
+              <div style={{ position: 'absolute', right: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {lastScannedBarcode && (
+                  <span style={{ fontSize: '10.5px', background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: '3px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <CheckCircle2 size={11} /> {lastScannedBarcode}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => searchInputRef.current?.focus()}
+                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '2px 6px', fontSize: '11px', fontWeight: 700, color: '#475569', cursor: 'pointer' }}
+                >
+                  Focus Scanner
+                </button>
+              </div>
             </div>
 
             {/* Autocomplete Dropdown */}
@@ -388,13 +577,13 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
                   boxShadow: 'var(--shadow-md)',
                   zIndex: 20,
                   marginTop: '4px',
-                  maxHeight: '200px',
+                  maxHeight: '220px',
                   overflowY: 'auto',
                 }}
               >
                 {searchResults.length === 0 ? (
                   <div style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    No matching products found.
+                    No matching products found for "{searchQuery}".
                   </div>
                 ) : (
                   searchResults.map((v) => (
@@ -448,7 +637,7 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
               <table className="table" style={{ margin: 0 }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--bg-primary)' }}>
-                    <th>Product & Variant</th>
+                    <th>Product &amp; Variant</th>
                     <th style={{ width: '90px', textAlign: 'center' }}>Stock Left</th>
                     <th style={{ width: '130px', textAlign: 'center' }}>Quantity</th>
                     <th style={{ width: '100px', textAlign: 'right' }}>Unit Price (৳)</th>
@@ -483,7 +672,7 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
                             </select>
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            {[it.size, it.color].filter(Boolean).join(' / ')} {it.barcode ? `• ${it.barcode}` : ''}
+                            {[it.size, it.color].filter(Boolean).join(' / ')} {it.barcode ? `• ${it.barcode}` : (it.sku ? `• ${it.sku}` : '')}
                           </div>
                           {it.sale_type === 'RENT' && (
                             <div style={{ marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
