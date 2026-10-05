@@ -13,6 +13,8 @@ export interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  saleType?: 'SALE' | 'RENT';
+  returnDate?: string | null;
 }
 
 export interface InvoiceData {
@@ -158,11 +160,18 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
 
     const itemsHtml = data.items.map(item => {
       const productCode = item.sku || item.code;
+      const isRent = item.saleType === 'RENT';
       return `
         <div class="item-row" style="margin-bottom: ${settings.itemSpacing}mm;">
           <div class="item-name">
             ${item.name} ${item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
+            ${isRent ? `<span style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; border: 1px solid #000; padding: 0 2px; border-radius: 2px; margin-left: 1mm; font-weight: 900;">[RENT]</span>` : ''}
           </div>
+          ${isRent && item.returnDate ? `
+            <div style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; font-weight: 800; color: #000000;">
+              Return Date: ${new Date(item.returnDate).toLocaleDateString()}
+            </div>
+          ` : ''}
           ${settings.showProductCode && productCode ? `
             <div class="item-code">
               Code: ${productCode}
@@ -928,19 +937,30 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             <div style={{ borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px' }}>
               {data.items.map((item, idx) => {
                 const productCode = item.sku || item.code;
+                const isRent = item.saleType === 'RENT';
                 return (
                   <div key={idx} style={{ marginBottom: `${settings.itemSpacing * 3.5}px` }}>
                     <div style={{ fontWeight: 900, wordBreak: 'break-word', overflowWrap: 'break-word', color: '#000000' }}>
                       {item.name} {item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
+                      {isRent && (
+                        <span style={{ fontSize: `${baseFontSize * 0.82}px`, border: '1px solid #000', padding: '0 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 900 }}>
+                          [RENT]
+                        </span>
+                      )}
                     </div>
+                    {isRent && item.returnDate && (
+                      <div style={{ fontSize: `${baseFontSize * 0.82}px`, fontWeight: 800, color: '#000000' }}>
+                        Return Date: {new Date(item.returnDate).toLocaleDateString()}
+                      </div>
+                    )}
                     {settings.showProductCode && productCode && (
                       <div style={{ fontSize: `${baseFontSize * 0.85}px`, color: '#000000', fontWeight: 800, letterSpacing: '0.2px' }}>
                         Code: {productCode}
                       </div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000' }}>
-                      <span>{item.quantity} × ৳${item.unitPrice.toFixed(0)}</span>
-                      <span style={{ fontWeight: 900, flexShrink: 0, paddingLeft: '4px' }}>৳${item.totalPrice.toFixed(0)}</span>
+                      <span>{item.quantity} × ৳{item.unitPrice.toFixed(0)}</span>
+                      <span style={{ fontWeight: 900, flexShrink: 0, paddingLeft: '4px' }}>৳{item.totalPrice.toFixed(0)}</span>
                     </div>
                   </div>
                 );

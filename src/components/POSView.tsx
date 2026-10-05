@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePOSStore, useNotificationStore } from '../store';
 import type { ProductVariant } from '../store';
 import { dbService } from '../dbService';
-import { Search, Trash2, Plus, Minus, Printer } from 'lucide-react';
+import { Search, Trash2, Plus, Minus, Printer, Clock } from 'lucide-react';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
+import { SherwaniOptionModal } from './SherwaniOptionModal';
 
 interface POSViewProps {
   onRefreshStats: () => void;
@@ -29,6 +30,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   const [lastCompletedInvoice, setLastCompletedInvoice] = useState<InvoiceData | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
+  const [sherwaniVariantToPrompt, setSherwaniVariantToPrompt] = useState<ProductVariant | null>(null);
 
   const [paymentRows, setPaymentRows] = useState<{ method: string; amount: number }[]>([{ method: 'CASH', amount: 0 }]);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -161,7 +163,17 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     if (variant.stock_quantity <= 0) {
       showToast(`Warning: ${variant.product?.name} (${variant.color}/${variant.size}) is out of stock!`, 'warning');
     }
-    addToCart(variant);
+
+    const isSherwani = 
+      variant.product?.category?.toLowerCase().trim() === 'sherwani' ||
+      Boolean(variant.rent_price || variant.product?.rent_price);
+
+    if (isSherwani) {
+      setSherwaniVariantToPrompt(variant);
+      return;
+    }
+
+    addToCart(variant, 'SALE');
     setSearchQuery('');
     if (searchInputRef.current) {
       searchInputRef.current.value = '';
@@ -214,17 +226,22 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         dueAmount: dueAmount,
         changeAmount: changeAmount,
         paymentRows: paymentRows,
-        items: cart.map(item => ({
-          name: item.variant.product?.name || 'Item',
-          size: item.variant.size,
-          color: item.variant.color,
-          sku: item.variant.sku,
-          barcode: item.variant.barcode,
-          code: item.variant.sku || item.variant.barcode,
-          quantity: item.quantity,
-          unitPrice: item.customPrice !== undefined ? item.customPrice : item.variant.selling_price,
-          totalPrice: item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)
-        }))
+        items: cart.map(item => {
+          const itemPrice = item.customPrice !== undefined ? item.customPrice : (item.saleType === 'RENT' ? (item.variant.rent_price || item.variant.product?.rent_price || item.variant.selling_price) : item.variant.selling_price);
+          return {
+            name: item.variant.product?.name || 'Item',
+            size: item.variant.size,
+            color: item.variant.color,
+            sku: item.variant.sku,
+            barcode: item.variant.barcode,
+            code: item.variant.sku || item.variant.barcode,
+            quantity: item.quantity,
+            unitPrice: itemPrice,
+            totalPrice: item.quantity * itemPrice,
+            saleType: item.saleType || 'SALE',
+            returnDate: item.returnDate || null
+          };
+        })
       };
 
       setLastCompletedInvoice(invoiceData);
@@ -501,76 +518,107 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                   </td>
                 </tr>
               ) : (
-                cart.map(item => (
-                  <tr key={item.variant.id}>
-                    <td>
-                      <div style={{ fontWeight: 600, fontSize: '13px' }}>{item.variant.product?.name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        SKU: {item.variant.sku} | BC: {item.variant.barcode}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{
-                        background: 'var(--bg-primary)',
-                        padding: '2px 5px',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        marginRight: '3px'
-                      }}>{item.variant.size}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{item.variant.color}</span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 600 }}>৳</span>
-                        <input
-                          type="number"
-                          className="form-control"
-                          value={item.customPrice !== undefined ? item.customPrice : item.variant.selling_price}
-                          onChange={(e) => updateCartPrice(item.variant.id, Number(e.target.value))}
-                          style={{ width: '70px', height: '28px', padding: '2px 4px', fontSize: '12px', textAlign: 'center' }}
-                        />
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                cart.map((item, idx) => {
+                  const isRent = item.saleType === 'RENT';
+                  const itemPrice = item.customPrice !== undefined 
+                    ? item.customPrice 
+                    : (isRent ? (item.variant.rent_price || item.variant.product?.rent_price || item.variant.selling_price) : item.variant.selling_price);
+
+                  return (
+                    <tr key={item.variant.id + (item.saleType || 'SALE') + idx}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontWeight: 600, fontSize: '13px' }}>{item.variant.product?.name}</span>
+                          {isRent && (
+                            <span
+                              style={{
+                                backgroundColor: '#7c3aed',
+                                color: '#ffffff',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontSize: '10.5px',
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                            >
+                              <Clock size={10} /> RENT
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          SKU: {item.variant.sku} | BC: {item.variant.barcode}
+                          {isRent && item.returnDate && (
+                            <span style={{ marginLeft: '6px', color: '#7c3aed', fontWeight: 600 }}>
+                              • Return: {new Date(item.returnDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{
+                          background: 'var(--bg-primary)',
+                          padding: '2px 5px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          marginRight: '3px'
+                        }}>{item.variant.size}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{item.variant.color}</span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600 }}>৳</span>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={itemPrice}
+                            onChange={(e) => updateCartPrice(item.variant.id, Number(e.target.value), item.saleType)}
+                            style={{ width: '70px', height: '28px', padding: '2px 4px', fontSize: '12px', textAlign: 'center' }}
+                          />
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ width: '24px', height: '24px', padding: 0 }}
+                            onClick={() => updateCartQty(item.variant.id, item.quantity - 1, item.saleType)}
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <span style={{ minWidth: '20px', fontWeight: 'bold', fontSize: '13px' }}>{item.quantity}</span>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ width: '24px', height: '24px', padding: 0 }}
+                            onClick={() => {
+                              if (item.quantity >= item.variant.stock_quantity) {
+                                showToast(`Warning: Only ${item.variant.stock_quantity} units available in stock.`, 'warning');
+                              }
+                              updateCartQty(item.variant.id, item.quantity + 1, item.saleType);
+                            }}
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '13px' }}>
+                        ৳{(item.quantity * itemPrice).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
                         <button 
-                          className="btn btn-secondary btn-sm" 
+                          className="btn btn-danger btn-sm" 
                           style={{ width: '24px', height: '24px', padding: 0 }}
-                          onClick={() => updateCartQty(item.variant.id, item.quantity - 1)}
+                          onClick={() => removeFromCart(item.variant.id, item.saleType)}
+                          title="Remove from Cart"
                         >
-                          <Minus size={11} />
+                          <Trash2 size={12} />
                         </button>
-                        <span style={{ minWidth: '20px', fontWeight: 'bold', fontSize: '13px' }}>{item.quantity}</span>
-                        <button 
-                          className="btn btn-secondary btn-sm" 
-                          style={{ width: '24px', height: '24px', padding: 0 }}
-                          onClick={() => {
-                            if (item.quantity >= item.variant.stock_quantity) {
-                              showToast(`Warning: Only ${item.variant.stock_quantity} units available in stock.`, 'warning');
-                            }
-                            updateCartQty(item.variant.id, item.quantity + 1);
-                          }}
-                        >
-                          <Plus size={11} />
-                        </button>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '13px' }}>
-                      ৳{(item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)).toFixed(2)}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button 
-                        className="btn btn-danger btn-sm" 
-                        style={{ width: '24px', height: '24px', padding: 0 }}
-                        onClick={() => removeFromCart(item.variant.id)}
-                        title="Remove from Cart"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -583,79 +631,98 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
               Cart is empty. Scan products or search to add them.
             </div>
           ) : (
-            cart.map(item => (
-              <div className="card" key={item.variant.id} style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#fff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '13px' }}>{item.variant.product?.name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '1px' }}>
-                      SKU: {item.variant.sku} | BC: {item.variant.barcode}
-                    </div>
-                  </div>
-                  <button 
-                    className="btn btn-danger btn-sm" 
-                    style={{ width: '24px', height: '24px', padding: 0 }}
-                    onClick={() => removeFromCart(item.variant.id)}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-                
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
-                  {/* Size & Color */}
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                    <span style={{ background: 'var(--bg-primary)', padding: '2px 5px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{item.variant.size}</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{item.variant.color}</span>
-                  </div>
+            cart.map((item, idx) => {
+              const isRent = item.saleType === 'RENT';
+              const itemPrice = item.customPrice !== undefined 
+                ? item.customPrice 
+                : (isRent ? (item.variant.rent_price || item.variant.product?.rent_price || item.variant.selling_price) : item.variant.selling_price);
 
-                  {/* Edit Price input */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Price:</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600 }}>৳</span>
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={item.customPrice !== undefined ? item.customPrice : item.variant.selling_price}
-                        onChange={(e) => updateCartPrice(item.variant.id, Number(e.target.value))}
-                        style={{ width: '65px', height: '26px', padding: '2px 4px', fontSize: '11.5px', textAlign: 'center' }}
-                      />
+              return (
+                <div className="card" key={item.variant.id + (item.saleType || 'SALE') + idx} style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '13px' }}>{item.variant.product?.name}</span>
+                        {isRent && (
+                          <span style={{ backgroundColor: '#7c3aed', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>
+                            RENT
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '1px' }}>
+                        SKU: {item.variant.sku} | BC: {item.variant.barcode}
+                        {isRent && item.returnDate && (
+                          <span style={{ marginLeft: '4px', color: '#7c3aed', fontWeight: 600 }}>
+                            • Ret: {new Date(item.returnDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px' }}>
-                  {/* Quantity selector */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <button 
-                      className="btn btn-secondary btn-sm" 
-                      style={{ width: '22px', height: '22px', padding: 0 }}
-                      onClick={() => updateCartQty(item.variant.id, item.quantity - 1)}
+                      className="btn btn-danger btn-sm" 
+                      style={{ width: '24px', height: '24px', padding: 0 }}
+                      onClick={() => removeFromCart(item.variant.id, item.saleType)}
                     >
-                      <Minus size={10} />
-                    </button>
-                    <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{item.quantity}</span>
-                    <button 
-                      className="btn btn-secondary btn-sm" 
-                      style={{ width: '22px', height: '22px', padding: 0 }}
-                      onClick={() => {
-                        if (item.quantity >= item.variant.stock_quantity) {
-                          showToast(`Warning: Only ${item.variant.stock_quantity} units available in stock.`, 'warning');
-                        }
-                        updateCartQty(item.variant.id, item.quantity + 1);
-                      }}
-                    >
-                      <Plus size={10} />
+                      <Trash2 size={12} />
                     </button>
                   </div>
                   
-                  {/* Total */}
-                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--color-primary)' }}>
-                    ৳{(item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)).toFixed(2)}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+                    {/* Size & Color */}
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <span style={{ background: 'var(--bg-primary)', padding: '2px 5px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{item.variant.size}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{item.variant.color}</span>
+                    </div>
+
+                    {/* Edit Price input */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Price:</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600 }}>৳</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={itemPrice}
+                          onChange={(e) => updateCartPrice(item.variant.id, Number(e.target.value), item.saleType)}
+                          style={{ width: '65px', height: '26px', padding: '2px 4px', fontSize: '11.5px', textAlign: 'center' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px' }}>
+                    {/* Quantity selector */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ width: '22px', height: '22px', padding: 0 }}
+                        onClick={() => updateCartQty(item.variant.id, item.quantity - 1, item.saleType)}
+                      >
+                        <Minus size={10} />
+                      </button>
+                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{item.quantity}</span>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ width: '22px', height: '22px', padding: 0 }}
+                        onClick={() => {
+                          if (item.quantity >= item.variant.stock_quantity) {
+                            showToast(`Warning: Only ${item.variant.stock_quantity} units available in stock.`, 'warning');
+                          }
+                          updateCartQty(item.variant.id, item.quantity + 1, item.saleType);
+                        }}
+                      >
+                        <Plus size={10} />
+                      </button>
+                    </div>
+                    
+                    {/* Total */}
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--color-primary)' }}>
+                      ৳{(item.quantity * itemPrice).toFixed(2)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -924,6 +991,24 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
           onNewSale={() => {
             setShowReceipt(false);
             handleNewSale();
+          }}
+        />
+      )}
+
+      {/* SHERWANI RENT VS SALE OPTION MODAL */}
+      {sherwaniVariantToPrompt && (
+        <SherwaniOptionModal
+          variant={sherwaniVariantToPrompt}
+          onConfirm={(saleType, price, returnDate) => {
+            addToCart(sherwaniVariantToPrompt, saleType, price, returnDate);
+            setSherwaniVariantToPrompt(null);
+            setSearchQuery('');
+            if (searchInputRef.current) searchInputRef.current.value = '';
+            setTimeout(() => searchInputRef.current?.focus(), 50);
+          }}
+          onClose={() => {
+            setSherwaniVariantToPrompt(null);
+            setTimeout(() => searchInputRef.current?.focus(), 50);
           }}
         />
       )}

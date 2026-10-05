@@ -1,24 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
-import { Search, Eye } from 'lucide-react';
+import { useNotificationStore } from '../store';
+import { Search, Eye, Edit2, Trash2 } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
+import { EditSaleModal } from './EditSaleModal';
 
 interface SalesListViewProps {
   isRestricted?: boolean;
 }
 
 export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = false }) => {
+  const { showToast, showConfirm } = useNotificationStore();
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   
-  // Selected sale details modal state
+  // Selected sale details modal state (View / Print)
   const [selectedSale, setSelectedSale] = useState<any | null>(null);
   const [saleItems, setSaleItems] = useState<any[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
+
+  // Edit sale modal state
+  const [editingSale, setEditingSale] = useState<any | null>(null);
+  const [editingSaleItems, setEditingSaleItems] = useState<any[]>([]);
+  const [editLoading, setEditLoading] = useState(false);
 
   const loadSales = async () => {
     try {
@@ -44,9 +52,42 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
       setSaleItems(items);
     } catch (e) {
       console.error('Failed to load sale details', e);
+      showToast('Failed to load sale details', 'error');
     } finally {
       setItemsLoading(false);
     }
+  };
+
+  const handleStartEdit = async (sale: any) => {
+    try {
+      setEditLoading(true);
+      const items = await dbService.getSaleItems(sale.id);
+      setEditingSaleItems(items);
+      setEditingSale(sale);
+    } catch (e) {
+      console.error('Failed to load sale items for editing', e);
+      showToast('Failed to load sale items for editing', 'error');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteSale = (sale: any) => {
+    const code = sale.id.toUpperCase().substring(0, 8);
+    showConfirm(
+      'Delete Sale Invoice',
+      `Are you sure you want to permanently delete Invoice #${code}? All sold products in this invoice will be automatically returned to inventory stock.`,
+      async () => {
+        try {
+          await dbService.deleteSale(sale.id);
+          showToast(`Invoice #${code} deleted and products restocked successfully!`, 'success');
+          loadSales();
+        } catch (err: any) {
+          console.error('Failed to delete sale', err);
+          showToast(err.message || 'Failed to delete sale invoice', 'error');
+        }
+      }
+    );
   };
 
   // Filter sales
@@ -82,7 +123,9 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
       code: item.variant?.sku || item.variant?.barcode,
       quantity: item.quantity,
       unitPrice: item.unit_price || (item.total_price / (item.quantity || 1)),
-      totalPrice: item.total_price
+      totalPrice: item.total_price,
+      saleType: item.sale_type || 'SALE',
+      returnDate: item.return_date || null
     }))
   } : null;
 
@@ -125,7 +168,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                 <th style={{ textAlign: 'right' }}>Total Payable</th>
                 <th style={{ textAlign: 'right' }}>Paid</th>
                 <th style={{ textAlign: 'right' }}>Due</th>
-                <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
+                <th style={{ width: '180px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -171,9 +214,46 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                       {s.due_amount > 0 ? `৳${s.due_amount.toFixed(2)}` : '৳0.00'}
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <button className="btn btn-secondary btn-sm" style={{ padding: '0 8px', fontSize: '11.5px' }} onClick={() => handleViewDetails(s)}>
-                        <Eye size={12} style={{ marginRight: '3px' }} /> View / Print
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '0 6px', fontSize: '11.5px', height: '26px' }}
+                          onClick={() => handleViewDetails(s)}
+                          title="View / Print Invoice"
+                        >
+                          <Eye size={12} style={{ marginRight: '2px' }} /> View
+                        </button>
+
+                        {!isRestricted && (
+                          <>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 6px', fontSize: '11.5px', height: '26px', color: 'var(--color-primary)' }}
+                              onClick={() => handleStartEdit(s)}
+                              disabled={editLoading}
+                              title="Edit Sale and Adjust Stock"
+                            >
+                              <Edit2 size={12} style={{ marginRight: '2px' }} /> Edit
+                            </button>
+
+                            <button
+                              className="btn btn-sm"
+                              style={{
+                                padding: '0 6px',
+                                fontSize: '11.5px',
+                                height: '26px',
+                                backgroundColor: '#fee2e2',
+                                color: 'var(--color-danger)',
+                                border: '1px solid #fecaca',
+                              }}
+                              onClick={() => handleDeleteSale(s)}
+                              title="Delete Invoice and Restock Items"
+                            >
+                              <Trash2 size={12} style={{ marginRight: '2px' }} /> Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -203,7 +283,23 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
         />
       )}
 
+      {/* EDIT SALE MODAL */}
+      {editingSale && (
+        <EditSaleModal
+          sale={editingSale}
+          initialItems={editingSaleItems}
+          onClose={() => {
+            setEditingSale(null);
+            setEditingSaleItems([]);
+          }}
+          onSuccess={() => {
+            loadSales();
+          }}
+        />
+      )}
+
     </div>
   );
 };
+
 

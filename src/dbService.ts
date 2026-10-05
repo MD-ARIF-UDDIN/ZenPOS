@@ -316,7 +316,19 @@ export const dbService = {
     return data || [];
   },
 
-  async checkoutSale(cart: { variant: ProductVariant; quantity: number; customPrice?: number }[], discount: number, paymentMethod: string, receivedAmount: number, customerPhone: string = '') {
+  async checkoutSale(
+    cart: {
+      variant: ProductVariant;
+      quantity: number;
+      customPrice?: number;
+      saleType?: 'SALE' | 'RENT';
+      returnDate?: string | null;
+    }[],
+    discount: number,
+    paymentMethod: string,
+    receivedAmount: number,
+    customerPhone: string = ''
+  ) {
     const subtotal = cart.reduce((acc, item) => acc + (item.quantity * (item.customPrice || item.variant.selling_price)), 0);
     const payableAmount = Math.max(0, subtotal - discount);
     const changeAmount = receivedAmount > payableAmount ? receivedAmount - payableAmount : 0;
@@ -347,7 +359,10 @@ export const dbService = {
           variant_id: item.variant.id,
           quantity: item.quantity,
           unit_price: itemPrice,
-          total_price: item.quantity * itemPrice
+          total_price: item.quantity * itemPrice,
+          sale_type: item.saleType || 'SALE',
+          return_date: item.saleType === 'RENT' ? (item.returnDate || null) : null,
+          is_returned: false
         };
       });
       
@@ -361,6 +376,135 @@ export const dbService = {
       return sale.id;
     }
     throw new Error('Failed to checkout sale');
+  },
+
+  async deleteSale(saleId: string) {
+    const { error } = await supabase
+      .from('sales')
+      .delete()
+      .eq('id', saleId);
+
+    if (error) throw error;
+
+    clearPosCache(['sales', 'variants', 'products', 'sale_items_detailed', 'stock_ledger']);
+    return true;
+  },
+
+  async updateSale(
+    saleId: string,
+    saleData: {
+      discount_amount: number;
+      payment_method: string;
+      received_amount: number;
+      customer_phone?: string;
+    },
+    items: {
+      id?: string;
+      variant_id: string;
+      quantity: number;
+      unit_price: number;
+      total_price: number;
+      sale_type?: 'SALE' | 'RENT';
+      return_date?: string | null;
+      is_returned?: boolean;
+    }[]
+  ) {
+    // 1. Calculate financials
+    const subtotal = items.reduce((acc, it) => acc + (Number(it.quantity) * Number(it.unit_price)), 0);
+    const payableAmount = Math.max(0, subtotal - (Number(saleData.discount_amount) || 0));
+    const receivedAmount = Number(saleData.received_amount) || 0;
+    const changeAmount = receivedAmount > payableAmount ? receivedAmount - payableAmount : 0;
+    const dueAmount = saleData.payment_method === 'DUE' ? payableAmount : (receivedAmount < payableAmount ? payableAmount - receivedAmount : 0);
+
+    // 2. Update sale header
+    const { error: saleError } = await supabase
+      .from('sales')
+      .update({
+        total_amount: subtotal,
+        discount_amount: saleData.discount_amount || 0,
+        payable_amount: payableAmount,
+        payment_method: saleData.payment_method,
+        received_amount: receivedAmount,
+        change_amount: changeAmount,
+        customer_phone: saleData.customer_phone || '',
+        due_amount: dueAmount
+      })
+      .eq('id', saleId);
+
+    if (saleError) throw saleError;
+
+    // 3. Sync sale_items:
+    const { data: existingItems, error: fetchErr } = await supabase
+      .from('sale_items')
+      .select('*')
+      .eq('sale_id', saleId);
+
+    if (fetchErr) throw fetchErr;
+
+    const existingMap = new Map((existingItems || []).map(it => [it.id, it]));
+    const currentItemIds = new Set(items.filter(it => it.id).map(it => it.id!));
+
+    // A. Items to delete (removed from invoice)
+    const itemsToDelete = (existingItems || []).filter(it => !currentItemIds.has(it.id));
+    if (itemsToDelete.length > 0) {
+      const deleteIds = itemsToDelete.map(it => it.id);
+      const { error: delErr } = await supabase
+        .from('sale_items')
+        .delete()
+        .in('id', deleteIds);
+      if (delErr) throw delErr;
+    }
+
+    // B. Items to update (existed and still in invoice)
+    const itemsToUpdate = items.filter(it => it.id && existingMap.has(it.id));
+    for (const item of itemsToUpdate) {
+      const existing = existingMap.get(item.id!)!;
+      const changed = 
+        existing.quantity !== item.quantity || 
+        existing.unit_price !== item.unit_price || 
+        existing.variant_id !== item.variant_id ||
+        existing.sale_type !== (item.sale_type || 'SALE') ||
+        existing.return_date !== (item.return_date || null) ||
+        existing.is_returned !== (item.is_returned || false);
+
+      if (changed) {
+        const { error: upErr } = await supabase
+          .from('sale_items')
+          .update({
+            variant_id: item.variant_id,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.quantity * item.unit_price,
+            sale_type: item.sale_type || 'SALE',
+            return_date: item.sale_type === 'RENT' ? (item.return_date || null) : null,
+            is_returned: item.is_returned || false
+          })
+          .eq('id', item.id);
+        if (upErr) throw upErr;
+      }
+    }
+
+    // C. Items to insert (newly added to this invoice)
+    const itemsToInsert = items.filter(it => !it.id);
+    if (itemsToInsert.length > 0) {
+      const newRows = itemsToInsert.map(it => ({
+        sale_id: saleId,
+        variant_id: it.variant_id,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        total_price: it.quantity * it.unit_price,
+        sale_type: it.sale_type || 'SALE',
+        return_date: it.sale_type === 'RENT' ? (it.return_date || null) : null,
+        is_returned: false
+      }));
+      const { error: insErr } = await supabase
+        .from('sale_items')
+        .insert(newRows);
+      if (insErr) throw insErr;
+    }
+
+    clearPosCache(['sales', 'variants', 'products', 'sale_items_detailed', 'stock_ledger']);
+    return true;
   },
 
   // --- Ultra-Fast Low Stock Count for Badge (Does not pull all sales/items) ---

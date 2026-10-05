@@ -29,6 +29,8 @@ export interface CartItem {
   quantity: number;
   discount: number; // Flat discount per item
   customPrice?: number; // Custom inputted price
+  saleType?: 'SALE' | 'RENT';
+  returnDate?: string | null;
 }
 
 interface POSState {
@@ -36,10 +38,11 @@ interface POSState {
   discount: number; // Global flat discount
   paymentMethod: 'CASH' | 'CARD' | 'MOBILE_PAY';
   receivedAmount: number;
-  addToCart: (variant: ProductVariant) => void;
-  removeFromCart: (variantId: string) => void;
-  updateCartQty: (variantId: string, quantity: number) => void;
-  updateCartPrice: (variantId: string, price: number) => void;
+  addToCart: (variant: ProductVariant, saleType?: 'SALE' | 'RENT', customPrice?: number, returnDate?: string | null) => void;
+  removeFromCart: (variantId: string, saleType?: 'SALE' | 'RENT') => void;
+  updateCartQty: (variantId: string, quantity: number, saleType?: 'SALE' | 'RENT') => void;
+  updateCartPrice: (variantId: string, price: number, saleType?: 'SALE' | 'RENT') => void;
+  updateCartReturnDate: (variantId: string, returnDate: string | null, saleType?: 'SALE' | 'RENT') => void;
   clearCart: () => void;
   setDiscount: (discount: number) => void;
   setPaymentMethod: (method: 'CASH' | 'CARD' | 'MOBILE_PAY') => void;
@@ -52,32 +55,66 @@ export const usePOSStore = create<POSState>((set) => ({
   paymentMethod: 'CASH',
   receivedAmount: 0,
 
-  addToCart: (variant) => set((state) => {
-    const existingIndex = state.cart.findIndex(item => item.variant.id === variant.id);
+  addToCart: (variant, saleType = 'SALE', customPrice, returnDate = null) => set((state) => {
+    const defaultPrice = saleType === 'RENT' 
+      ? (variant.rent_price || variant.product?.rent_price || variant.selling_price)
+      : variant.selling_price;
+    const finalPrice = customPrice !== undefined ? customPrice : defaultPrice;
+
+    const existingIndex = state.cart.findIndex(
+      item => item.variant.id === variant.id && (item.saleType || 'SALE') === saleType
+    );
+
     if (existingIndex > -1) {
       const updatedCart = [...state.cart];
       updatedCart[existingIndex].quantity += 1;
+      if (returnDate) {
+        updatedCart[existingIndex].returnDate = returnDate;
+      }
       return { cart: updatedCart };
     }
-    return { cart: [...state.cart, { variant, quantity: 1, discount: 0, customPrice: variant.selling_price }] };
+
+    return {
+      cart: [
+        ...state.cart,
+        {
+          variant,
+          quantity: 1,
+          discount: 0,
+          customPrice: finalPrice,
+          saleType,
+          returnDate: saleType === 'RENT' ? returnDate : null
+        }
+      ]
+    };
   }),
 
-  removeFromCart: (variantId) => set((state) => ({
-    cart: state.cart.filter(item => item.variant.id !== variantId)
+  removeFromCart: (variantId, saleType) => set((state) => ({
+    cart: state.cart.filter(item => 
+      !(item.variant.id === variantId && (!saleType || (item.saleType || 'SALE') === saleType))
+    )
   })),
 
-  updateCartQty: (variantId, quantity) => set((state) => ({
+  updateCartQty: (variantId, quantity, saleType) => set((state) => ({
     cart: state.cart.map(item => 
-      item.variant.id === variantId 
+      (item.variant.id === variantId && (!saleType || (item.saleType || 'SALE') === saleType))
         ? { ...item, quantity: Math.max(1, quantity) } 
         : item
     )
   })),
 
-  updateCartPrice: (variantId, price) => set((state) => ({
+  updateCartPrice: (variantId, price, saleType) => set((state) => ({
     cart: state.cart.map(item =>
-      item.variant.id === variantId
+      (item.variant.id === variantId && (!saleType || (item.saleType || 'SALE') === saleType))
         ? { ...item, customPrice: Math.max(0, price) }
+        : item
+    )
+  })),
+
+  updateCartReturnDate: (variantId, returnDate, saleType = 'RENT') => set((state) => ({
+    cart: state.cart.map(item =>
+      (item.variant.id === variantId && (item.saleType || 'SALE') === saleType)
+        ? { ...item, returnDate }
         : item
     )
   })),

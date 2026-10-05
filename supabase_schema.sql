@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS public.sale_items (
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     total_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    sale_type VARCHAR(20) DEFAULT 'SALE' CHECK (sale_type IN ('SALE', 'RENT')),
+    return_date DATE DEFAULT NULL,
+    is_returned BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -200,6 +203,76 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_after_sale_item_insert ON public.sale_items;
 CREATE TRIGGER trg_after_sale_item_insert
 AFTER INSERT ON public.sale_items
 FOR EACH ROW EXECUTE FUNCTION public.after_sale_item_insert();
+
+-- When sale_items are deleted, return stock to variant and log to ledger
+CREATE OR REPLACE FUNCTION public.after_sale_item_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE public.product_variants
+    SET stock_quantity = stock_quantity + OLD.quantity
+    WHERE id = OLD.variant_id;
+
+    INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
+    VALUES (OLD.variant_id, 'RETURN', OLD.quantity, OLD.sale_id, 'Restocked from deleted sale invoice');
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_after_sale_item_delete ON public.sale_items;
+CREATE TRIGGER trg_after_sale_item_delete
+AFTER DELETE ON public.sale_items
+FOR EACH ROW EXECUTE FUNCTION public.after_sale_item_delete();
+
+-- When sale_items are updated (quantity or variant changed), adjust stock accordingly
+CREATE OR REPLACE FUNCTION public.after_sale_item_update()
+RETURNS TRIGGER AS $$
+DECLARE
+    qty_diff INTEGER;
+BEGIN
+    IF OLD.variant_id = NEW.variant_id THEN
+        qty_diff := NEW.quantity - OLD.quantity;
+        IF qty_diff <> 0 THEN
+            UPDATE public.product_variants
+            SET stock_quantity = stock_quantity - qty_diff
+            WHERE id = NEW.variant_id;
+
+            INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
+            VALUES (
+                NEW.variant_id, 
+                CASE WHEN qty_diff > 0 THEN 'SALE' ELSE 'RETURN' END, 
+                -qty_diff, 
+                NEW.sale_id, 
+                'Sale invoice edited: quantity changed from ' || OLD.quantity || ' to ' || NEW.quantity
+            );
+        END IF;
+    ELSE
+        -- Variant was swapped
+        UPDATE public.product_variants
+        SET stock_quantity = stock_quantity + OLD.quantity
+        WHERE id = OLD.variant_id;
+
+        INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
+        VALUES (OLD.variant_id, 'RETURN', OLD.quantity, OLD.sale_id, 'Restocked from swapped sale item');
+
+        UPDATE public.product_variants
+        SET stock_quantity = stock_quantity - NEW.quantity
+        WHERE id = NEW.variant_id;
+
+        INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
+        VALUES (NEW.variant_id, 'SALE', -NEW.quantity, NEW.sale_id, 'Deducted for newly swapped sale item');
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_after_sale_item_update ON public.sale_items;
+CREATE TRIGGER trg_after_sale_item_update
+AFTER UPDATE ON public.sale_items
+FOR EACH ROW EXECUTE FUNCTION public.after_sale_item_update();
+
