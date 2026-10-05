@@ -224,35 +224,31 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                           <Eye size={12} style={{ marginRight: '2px' }} /> View
                         </button>
 
-                        {!isRestricted && (
-                          <>
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              style={{ padding: '0 6px', fontSize: '11.5px', height: '26px', color: 'var(--color-primary)' }}
-                              onClick={() => handleStartEdit(s)}
-                              disabled={editLoading}
-                              title="Edit Sale and Adjust Stock"
-                            >
-                              <Edit2 size={12} style={{ marginRight: '2px' }} /> Edit
-                            </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '0 6px', fontSize: '11.5px', height: '26px', color: 'var(--color-primary)' }}
+                          onClick={() => handleStartEdit(s)}
+                          disabled={editLoading}
+                          title="Edit Sale and Adjust Stock"
+                        >
+                          <Edit2 size={12} style={{ marginRight: '2px' }} /> Edit
+                        </button>
 
-                            <button
-                              className="btn btn-sm"
-                              style={{
-                                padding: '0 6px',
-                                fontSize: '11.5px',
-                                height: '26px',
-                                backgroundColor: '#fee2e2',
-                                color: 'var(--color-danger)',
-                                border: '1px solid #fecaca',
-                              }}
-                              onClick={() => handleDeleteSale(s)}
-                              title="Delete Invoice and Restock Items"
-                            >
-                              <Trash2 size={12} style={{ marginRight: '2px' }} /> Delete
-                            </button>
-                          </>
-                        )}
+                        <button
+                          className="btn btn-sm"
+                          style={{
+                            padding: '0 6px',
+                            fontSize: '11.5px',
+                            height: '26px',
+                            backgroundColor: '#fee2e2',
+                            color: 'var(--color-danger)',
+                            border: '1px solid #fecaca',
+                          }}
+                          onClick={() => handleDeleteSale(s)}
+                          title="Delete Invoice and Restock Items"
+                        >
+                          <Trash2 size={12} style={{ marginRight: '2px' }} /> Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
