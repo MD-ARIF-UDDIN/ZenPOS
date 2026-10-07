@@ -7,18 +7,21 @@ import { StockView } from './components/StockView';
 import { ReportsView } from './components/ReportsView';
 import { UsersView } from './components/UsersView';
 import { SalesListView } from './components/SalesListView';
+import { ReturnsListView } from './components/ReturnsListView';
+import { RentalsView } from './components/RentalsView';
 import { AuthView } from './components/AuthView';
 import { ExpensesView } from './components/ExpensesView';
 import { dbService } from './dbService';
 import { supabase } from './supabaseClient';
 import { useNotificationStore } from './store';
 import { RefreshCw, LogOut, User, Menu } from 'lucide-react';
-import { isRestrictedStaffRole, formatRoleName } from './roleUtils';
+import { isRestrictedStaffRole, formatRoleName, hasModuleAccess, DEFAULT_ROLE_PERMISSIONS } from './roleUtils';
 
 function App() {
-  const { toasts, removeToast, modal, closeModal } = useNotificationStore();
+  const { toasts, removeToast, modal, closeModal, showToast } = useNotificationStore();
   const [session, setSession] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('cashier');
+  const [userPermissions, setUserPermissions] = useState<string[]>(DEFAULT_ROLE_PERMISSIONS.cashier);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -26,6 +29,8 @@ function App() {
 
   const handleAuthSuccess = (activeSession: any) => {
     setSession(activeSession);
+    const initialPerms = activeSession?.user?.user_metadata?.permissions || DEFAULT_ROLE_PERMISSIONS[activeSession?.user?.user_metadata?.role || 'cashier'];
+    if (initialPerms) setUserPermissions(initialPerms);
     refreshStats();
   };
 
@@ -34,22 +39,36 @@ function App() {
     await supabase.auth.signOut();
     setSession(null);
     setUserRole('cashier');
+    setUserPermissions(DEFAULT_ROLE_PERMISSIONS.cashier);
   };
 
-  // Sync userRole from session metadata and users table
+  // Sync userRole & permissions from session and dbService
   useEffect(() => {
     if (!session?.user) {
       setUserRole('');
+      setUserPermissions([]);
       return;
     }
     const initialRole = 
       session.user.user_metadata?.role || 
-      (session.user.email === 'admin@gmail.com' ? 'admin' : 'cashier');
+      (session.user.email === 'admin@zenpos.local' || session.user.email === 'admin@gmail.com' ? 'admin' : 'cashier');
     setUserRole(initialRole);
 
-    if (session.user.id) {
-      dbService.getUserRole(session.user.id, initialRole).then(resolved => {
-        if (resolved) setUserRole(resolved);
+    const initialPerms = session.user.user_metadata?.permissions || DEFAULT_ROLE_PERMISSIONS[initialRole] || DEFAULT_ROLE_PERMISSIONS.cashier;
+    setUserPermissions(initialPerms);
+
+    const userId = session.user.id || session.user.email || session.user.phone;
+    if (userId) {
+      dbService.getUserProfile(userId).then(profile => {
+        if (profile) {
+          if (profile.is_locked) {
+            showToast('Your staff account has been locked by the Administrator.', 'error');
+            handleLogout();
+            return;
+          }
+          if (profile.role) setUserRole(profile.role);
+          if (profile.permissions) setUserPermissions(profile.permissions);
+        }
       });
     }
   }, [session]);
@@ -120,14 +139,33 @@ function App() {
     if (path.startsWith('/products')) return 'Product Catalog';
     if (path.startsWith('/stock')) return 'Inventory Stock Levels';
     if (path.startsWith('/sales')) return 'Completed Invoices Ledger';
+    if (path.startsWith('/returns')) return 'Returns & Exchanges Ledger';
+    if (path.startsWith('/rentals')) return 'Rentals Management';
     if (path.startsWith('/expenses')) return 'Operating Expense Ledger';
     if (path.startsWith('/users')) return 'Staff & Terminal Profiles';
     if (path.startsWith('/reports')) return 'Business Analytics';
     return 'POS Checkout';
   };
 
-  const userEmail = session?.user?.email || 'Cashier';
+  const userDisplayName = 
+    session?.user?.phone || 
+    session?.user?.user_metadata?.phone || 
+    (session?.user?.email && session.user.email.endsWith('@zenpos.local') ? session.user.email.replace('@zenpos.local', '') : session?.user?.email) || 
+    'Staff User';
   const isRestricted = isRestrictedStaffRole(userRole);
+
+  const getDefaultPath = () => {
+    if (hasModuleAccess(userPermissions, userRole, 'pos')) return '/pos';
+    if (hasModuleAccess(userPermissions, userRole, 'sales')) return '/sales';
+    if (hasModuleAccess(userPermissions, userRole, 'returns')) return '/returns';
+    if (hasModuleAccess(userPermissions, userRole, 'rentals')) return '/rentals';
+    if (hasModuleAccess(userPermissions, userRole, 'products')) return '/products';
+    if (hasModuleAccess(userPermissions, userRole, 'stock')) return '/stock';
+    if (hasModuleAccess(userPermissions, userRole, 'expenses')) return '/expenses';
+    if (hasModuleAccess(userPermissions, userRole, 'users')) return '/users';
+    if (hasModuleAccess(userPermissions, userRole, 'reports')) return '/reports';
+    return '/pos';
+  };
 
   return (
     <div className="app-container">
@@ -137,6 +175,7 @@ function App() {
         isOpen={isMobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
         userRole={userRole}
+        userPermissions={userPermissions}
       />
 
       {/* Dim Overlay Backdrop for Mobile Menu Drawer */}
@@ -229,7 +268,7 @@ function App() {
               border: '1px solid var(--border-color)'
             }}>
               <User size={13} style={{ color: 'var(--color-primary)' }} />
-              <span className="user-email">{userEmail}</span>
+              <span className="user-email">{userDisplayName}</span>
               {userRole && (
                 <span style={{
                   fontSize: '10px',
@@ -272,15 +311,17 @@ function App() {
 
         <main className="page-container">
           <Routes>
-            <Route path="/" element={<Navigate to="/pos" replace />} />
-            <Route path="/pos" element={<POSView onRefreshStats={refreshStats} />} />
-            <Route path="/sales" element={<SalesListView isRestricted={isRestricted} />} />
-            <Route path="/products" element={isRestricted ? <Navigate to="/pos" replace /> : <ProductsView onRefreshStats={refreshStats} />} />
-            <Route path="/stock" element={isRestricted ? <Navigate to="/pos" replace /> : <StockView onRefreshStats={refreshStats} />} />
-            <Route path="/expenses" element={isRestricted ? <Navigate to="/pos" replace /> : <ExpensesView onRefreshStats={refreshStats} />} />
-            <Route path="/users" element={isRestricted ? <Navigate to="/pos" replace /> : <UsersView />} />
-            <Route path="/reports" element={isRestricted ? <Navigate to="/pos" replace /> : <ReportsView />} />
-            <Route path="*" element={<Navigate to="/pos" replace />} />
+            <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
+            <Route path="/pos" element={hasModuleAccess(userPermissions, userRole, 'pos') ? <POSView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/rentals" element={hasModuleAccess(userPermissions, userRole, 'rentals') ? <RentalsView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/returns" element={hasModuleAccess(userPermissions, userRole, 'returns') ? <ReturnsListView isRestricted={isRestricted} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/sales" element={hasModuleAccess(userPermissions, userRole, 'sales') ? <SalesListView isRestricted={isRestricted} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/products" element={hasModuleAccess(userPermissions, userRole, 'products') ? <ProductsView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/stock" element={hasModuleAccess(userPermissions, userRole, 'stock') ? <StockView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/expenses" element={hasModuleAccess(userPermissions, userRole, 'expenses') ? <ExpensesView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/users" element={hasModuleAccess(userPermissions, userRole, 'users') ? <UsersView /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/reports" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <ReportsView /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="*" element={<Navigate to={getDefaultPath()} replace />} />
           </Routes>
         </main>
       </div>

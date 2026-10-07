@@ -15,6 +15,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterTab, setFilterTab] = useState<'ALL' | 'SALES' | 'RETURNS'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   
@@ -92,11 +93,23 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
 
   // Filter sales
   const baseSales = isRestricted ? sales.slice(0, 5) : sales;
-  const filteredSales = baseSales.filter(s => 
-    s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.payment_method.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.customer_phone && s.customer_phone.includes(searchQuery))
-  );
+  const filteredSales = baseSales.filter(s => {
+    const hasReturn = s.sale_items?.some((si: any) => si.sale_type === 'RETURN' || si.is_returned);
+    if (filterTab === 'RETURNS' && !hasReturn) return false;
+    if (filterTab === 'SALES' && hasReturn) return false;
+
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    const matchesId = s.id.toLowerCase().includes(q);
+    const matchesMethod = (s.payment_method || '').toLowerCase().includes(q);
+    const matchesPhone = s.customer_phone && s.customer_phone.includes(q);
+    const matchesBarcode = s.sale_items?.some((si: any) => 
+      si.variant?.barcode?.toLowerCase().includes(q) ||
+      si.variant?.sku?.toLowerCase().includes(q) ||
+      si.variant?.product?.name?.toLowerCase().includes(q)
+    );
+    return matchesId || matchesMethod || matchesPhone || matchesBarcode;
+  });
 
   const paginatedSales = isRestricted
     ? filteredSales.slice(0, 5)
@@ -122,9 +135,9 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
       barcode: item.variant?.barcode,
       code: item.variant?.sku || item.variant?.barcode,
       quantity: item.quantity,
-      unitPrice: item.unit_price || (item.total_price / (item.quantity || 1)),
+      unitPrice: item.unit_price || (Math.abs(item.total_price) / (item.quantity || 1)),
       totalPrice: item.total_price,
-      saleType: item.sale_type || 'SALE',
+      saleType: item.sale_type || (item.is_returned ? 'RETURN' : 'SALE'),
       returnDate: item.return_date || null
     }))
   } : null;
@@ -132,14 +145,14 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      {/* Search Filter bar */}
-      <div className="card" style={{ padding: '12px' }}>
-        <div style={{ position: 'relative', width: '100%' }}>
+      {/* Search & Submenu Filter bar */}
+      <div className="card" style={{ padding: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
           <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
             type="text"
             className="form-control"
-            placeholder="Search by invoice code, phone number, or payment mode..."
+            placeholder="Search by invoice code, barcode, product, phone number, or payment mode..."
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -147,6 +160,58 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
             }}
             style={{ paddingLeft: '36px', width: '100%', height: '36px' }}
           />
+        </div>
+
+        {/* Submenu Filter Tabs */}
+        <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '3px', borderRadius: '6px' }}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => { setFilterTab('ALL'); setCurrentPage(1); }}
+            style={{
+              padding: '5px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              border: 'none',
+              background: filterTab === 'ALL' ? 'var(--color-primary)' : 'transparent',
+              color: filterTab === 'ALL' ? '#fff' : 'var(--text-secondary)'
+            }}
+          >
+            All Invoices
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => { setFilterTab('SALES'); setCurrentPage(1); }}
+            style={{
+              padding: '5px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              border: 'none',
+              background: filterTab === 'SALES' ? 'var(--color-primary)' : 'transparent',
+              color: filterTab === 'SALES' ? '#fff' : 'var(--text-secondary)'
+            }}
+          >
+            Sales Only
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => { setFilterTab('RETURNS'); setCurrentPage(1); }}
+            style={{
+              padding: '5px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              border: 'none',
+              background: filterTab === 'RETURNS' ? '#dc2626' : 'transparent',
+              color: filterTab === 'RETURNS' ? '#fff' : '#b91c1c'
+            }}
+          >
+            Returns & Exchanges Only
+          </button>
         </div>
       </div>
 
@@ -162,6 +227,8 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                 <th>Invoice Code</th>
                 <th>Time/Date</th>
                 <th>Customer Phone</th>
+                <th>Product Code</th>
+                <th>Barcode</th>
                 <th>Payment Mode</th>
                 <th style={{ textAlign: 'right' }}>Subtotal</th>
                 <th style={{ textAlign: 'right' }}>Discount</th>
@@ -174,7 +241,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
             <tbody>
               {filteredSales.length === 0 ? (
                 <tr>
-                  <td colSpan={11} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
+                  <td colSpan={13} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
                     No completed invoices found.
                   </td>
                 </tr>
@@ -190,6 +257,68 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                     <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(s.sale_date).toLocaleDateString()}</td>
                     <td style={{ fontWeight: s.customer_phone ? 600 : 'normal', fontSize: '12px', color: s.customer_phone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                       {s.customer_phone ? `📞 ${s.customer_phone}` : '-'}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                        {s.sale_items && s.sale_items.length > 0 ? (
+                          s.sale_items.map((item: any, itemIdx: number) => {
+                            const sku = item.variant?.sku || '-';
+                            const productName = item.variant?.product?.name || 'Product';
+                            const details = [item.variant?.size, item.variant?.color].filter(Boolean).join(' / ');
+                            return (
+                              <span
+                                key={itemIdx}
+                                style={{
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)',
+                                  background: 'var(--bg-primary)',
+                                  border: '1px solid var(--border-color)',
+                                  padding: '2px 7px',
+                                  borderRadius: '4px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                title={`${productName} ${details ? `(${details})` : ''} - SKU: ${sku}`}
+                              >
+                                {sku}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>-</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                        {s.sale_items && s.sale_items.length > 0 ? (
+                          s.sale_items.map((item: any, itemIdx: number) => {
+                            const barcode = item.variant?.barcode || '-';
+                            const productName = item.variant?.product?.name || 'Product';
+                            const details = [item.variant?.size, item.variant?.color].filter(Boolean).join(' / ');
+                            return (
+                              <span
+                                key={itemIdx}
+                                style={{
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)',
+                                  background: 'var(--bg-primary)',
+                                  border: '1px solid var(--border-color)',
+                                  padding: '2px 7px',
+                                  borderRadius: '4px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                title={`${productName} ${details ? `(${details})` : ''} - Qty: ${item.quantity || 1}`}
+                              >
+                                {barcode}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>-</span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span style={{

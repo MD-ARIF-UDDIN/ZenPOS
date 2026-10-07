@@ -1,5 +1,43 @@
 export type AppRole = 'admin' | 'manager' | 'cashier' | 'sales_executive' | string;
 
+export type AppModuleId = 
+  | 'pos' 
+  | 'rentals' 
+  | 'returns' 
+  | 'products' 
+  | 'stock' 
+  | 'sales' 
+  | 'expenses' 
+  | 'users' 
+  | 'reports';
+
+export interface ModuleDefinition {
+  id: AppModuleId;
+  name: string;
+  label: string;
+  shortName: string;
+  color: string;
+}
+
+export const ALL_APP_MODULES: ModuleDefinition[] = [
+  { id: 'pos', name: 'POS Checkout', label: 'POS Checkout', shortName: 'POS', color: '#0b2545' },
+  { id: 'rentals', name: 'Rentals', label: 'Rentals Management', shortName: 'Rentals', color: '#7c3aed' },
+  { id: 'returns', name: 'Returns & Exchanges', label: 'Returns & Exchanges', shortName: 'Returns', color: '#dc2626' },
+  { id: 'products', name: 'Product Catalog', label: 'Products & Variants', shortName: 'Products', color: '#0284c7' },
+  { id: 'stock', name: 'Stock & Inventory', label: 'Stock & Inventory', shortName: 'Stock', color: '#d97706' },
+  { id: 'sales', name: 'Sales History', label: 'Sales Invoices Ledger', shortName: 'Sales', color: '#2563eb' },
+  { id: 'expenses', name: 'Expenses', label: 'Operating Expenses', shortName: 'Expenses', color: '#e11d48' },
+  { id: 'users', name: 'Staff Management', label: 'Staff & Permissions', shortName: 'Staff', color: '#4f46e5' },
+  { id: 'reports', name: 'Reports', label: 'Business Analytics & Reports', shortName: 'Reports', color: '#059669' },
+];
+
+export const DEFAULT_ROLE_PERMISSIONS: Record<string, AppModuleId[]> = {
+  admin: ['pos', 'rentals', 'returns', 'products', 'stock', 'sales', 'expenses', 'users', 'reports'],
+  manager: ['pos', 'rentals', 'returns', 'products', 'stock', 'sales', 'expenses', 'reports'],
+  cashier: ['pos', 'rentals', 'returns', 'sales'],
+  sales_executive: ['pos', 'rentals', 'returns', 'sales'],
+};
+
 export const STAFF_ROLES = [
   { value: 'cashier', label: 'Cashier' },
   { value: 'sales_executive', label: 'Sales Executive' },
@@ -9,14 +47,33 @@ export const STAFF_ROLES = [
 
 /**
  * Returns true if the user's role is Cashier or Sales Executive.
- * Both roles have identical restricted permissions:
- * - Only see POS and Sales
- * - In Sales, only see the last 5 sales
  */
 export const isRestrictedStaffRole = (role?: string | null): boolean => {
   if (!role) return false;
   const normalized = role.toLowerCase().replace(/[-_]/g, ' ').trim();
   return normalized === 'cashier' || normalized === 'sales executive';
+};
+
+/**
+ * Checks if user has permission to access a specific module
+ */
+export const hasModuleAccess = (
+  userPermissions: string[] | undefined | null,
+  userRole?: string | null,
+  moduleId?: string
+): boolean => {
+  if (!moduleId) return false;
+  const normRole = (userRole || '').toLowerCase().trim();
+  if (normRole === 'admin' || normRole === 'administrator') return true;
+
+  if (Array.isArray(userPermissions) && userPermissions.length > 0) {
+    if (userPermissions.includes('*')) return true;
+    return userPermissions.includes(moduleId);
+  }
+
+  // Fallback to default role permissions
+  const defaults = DEFAULT_ROLE_PERMISSIONS[normRole] || DEFAULT_ROLE_PERMISSIONS.cashier;
+  return defaults.includes(moduleId as AppModuleId);
 };
 
 /**
@@ -31,3 +88,11 @@ export const formatRoleName = (role?: string | null): string => {
   if (normalized === 'cashier') return 'Cashier';
   return role.charAt(0).toUpperCase() + role.slice(1);
 };
+
+/**
+ * Normalizes phone numbers (e.g. removes spaces, dashes, country code prefixes)
+ */
+export const cleanPhoneInput = (input: string): string => {
+  return (input || '').replace(/[^0-9]/g, '').trim();
+};
+

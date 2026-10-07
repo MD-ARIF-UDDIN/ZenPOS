@@ -93,6 +93,10 @@ const GENTS_CATEGORIES: string[] = [
   'Formal Shirt',
   'Panjabi / Kurta',
   'Sherwani',
+  'Pagri',
+  'Dupatta',
+  'Brooch / Bronze',
+  'Mala',
   'Jeans Pant',
   'Gabardine / Chino Pant',
   'Formal Pant / Trouser',
@@ -108,6 +112,13 @@ const GENTS_CATEGORIES: string[] = [
   'Shoes / Footwear',
   'Cap / Accessories'
 ];
+
+export const isRentalCategoryOrProduct = (product?: Product | null, categoryStr?: string, nameStr?: string): boolean => {
+  const cat = (categoryStr || product?.category || '').toLowerCase();
+  const name = (nameStr || product?.name || '').toLowerCase();
+  const keywords = ['sherwani', 'dupatta', 'pagri', 'bronze', 'brooch', 'mala'];
+  return keywords.some(kw => cat.includes(kw) || name.includes(kw)) || Boolean(product?.rent_price);
+};
 
 interface ColorOption {
   name: string;
@@ -560,6 +571,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [productFormBrand, setProductFormBrand] = useState('');
   const [productFormDesc, setProductFormDesc] = useState('');
+  const [productFormRentPrice, setProductFormRentPrice] = useState<number | string>('');
   const [savingProduct, setSavingProduct] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
@@ -614,6 +626,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     setCustomCategoryInput('');
     setProductFormBrand('');
     setProductFormDesc('');
+    setProductFormRentPrice('');
     setShowProductModal(true);
   };
 
@@ -632,6 +645,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
     setProductFormBrand(prod.brand || '');
     setProductFormDesc(prod.description || '');
+    setProductFormRentPrice(prod.rent_price !== undefined && prod.rent_price !== null ? prod.rent_price : '');
     setShowProductModal(true);
   };
 
@@ -649,7 +663,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         name: productFormName.trim(),
         category: finalCategory,
         brand: productFormBrand.trim(),
-        description: productFormDesc.trim()
+        description: productFormDesc.trim(),
+        rent_price: productFormRentPrice !== '' ? Math.max(0, Number(productFormRentPrice) || 0) : null
       });
       setShowProductModal(false);
       setEditingProduct(null);
@@ -720,7 +735,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       ? generateVariantSku(activeProduct.name, '', 'M', targetBundle, serialOffset)
       : '';
 
-    const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+    const isRental = isRentalCategoryOrProduct(activeProduct);
 
     setVariantRows([
       {
@@ -731,7 +746,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         sku: initialSku,
         purchase_price: 0,
         selling_price: 0,
-        rent_price: isSherwani ? 0 : null,
+        rent_price: isRental ? (activeProduct?.rent_price || 0) : null,
         stock_quantity: 1,
         min_stock_level: 5
       }
@@ -797,10 +812,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       const serialNumber = variantsInBundle.length + prev.length + 1;
       const newSku = generateVariantSku(activeProduct?.name || '', '', sizeName, bundleNumber, serialNumber);
 
-      const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+      const isRental = isRentalCategoryOrProduct(activeProduct);
       const firstCost = prev.length > 0 ? (prev[0].purchase_price || 0) : 0;
       const firstPrice = prev.length > 0 ? (prev[0].selling_price || 0) : 0;
-      const firstRent = prev.length > 0 ? (prev[0].rent_price || 0) : 0;
+      const firstRent = prev.length > 0 ? (prev[0].rent_price || 0) : (activeProduct?.rent_price || 0);
 
       return [
         ...prev,
@@ -812,7 +827,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           sku: newSku,
           purchase_price: copyCostToAll ? firstCost : 0,
           selling_price: copyPriceToAll ? firstPrice : 0,
-          rent_price: isSherwani ? (copyRentToAll ? firstRent : 0) : null,
+          rent_price: isRental ? (copyRentToAll ? firstRent : (activeProduct?.rent_price || 0)) : null,
           stock_quantity: 1,
           min_stock_level: 5
         }
@@ -893,8 +908,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       return;
     }
 
-    const isSherwani = (activeProduct.category || '').toLowerCase().includes('sherwani');
-
     // Validate rows
     for (let i = 0; i < variantRows.length; i++) {
       const row = variantRows[i];
@@ -908,10 +921,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
       }
       if (row.selling_price <= 0) {
         showToast(`Row #${i + 1} (${row.size}) must have a valid Selling Price.`, 'warning');
-        return;
-      }
-      if (isSherwani && (row.rent_price === undefined || row.rent_price === null || Number(row.rent_price) <= 0)) {
-        showToast(`Row #${i + 1} (${row.size}) must have a valid Rent Price for Sherwani.`, 'warning');
         return;
       }
     }
@@ -1020,13 +1029,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
     if (editSellPrice <= 0) {
       showToast('Selling price must be greater than zero.', 'warning');
-      return;
-    }
-
-    const isSherwani = (activeProduct?.category || editVariantModal.product?.category || '').toLowerCase().includes('sherwani');
-
-    if (isSherwani && (editRentPrice === '' || Number(editRentPrice) <= 0)) {
-      showToast('Rent price must be greater than zero for Sherwani.', 'warning');
       return;
     }
 
@@ -1712,7 +1714,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           <th>Color</th>
                           <th>Cost</th>
                           <th>Price</th>
-                          {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                          {(isRentalCategoryOrProduct(activeProduct)) && (
                             <th style={{ color: '#166534', backgroundColor: '#f0fdf4' }}>Rent Price</th>
                           )}
                           <th>Stock</th>
@@ -1722,7 +1724,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                       <tbody>
                         {filteredActiveVariants.length === 0 ? (
                           <tr>
-                            <td colSpan={((activeProduct?.category || '').toLowerCase().includes('sherwani')) ? 10 : 9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
+                            <td colSpan={(isRentalCategoryOrProduct(activeProduct)) ? 10 : 9} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)' }}>
                               {variantSearch ? `No variants matched "${variantSearch}".` : 'No variants defined yet. Add a size/color variant to start tracking stock & barcodes.'}
                             </td>
                           </tr>
@@ -1743,7 +1745,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                               <td>{v.color}</td>
                               <td>৳{(v.purchase_price ?? 0).toFixed(2)}</td>
                               <td>৳{(v.selling_price ?? 0).toFixed(2)}</td>
-                              {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                              {(isRentalCategoryOrProduct(activeProduct)) && (
                                 <td style={{ fontWeight: 800, color: '#166534', backgroundColor: '#f0fdf4' }}>
                                   ৳{(v.rent_price ?? 0).toFixed(2)}
                                 </td>
@@ -1983,6 +1985,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
               </div>
 
               <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Default Rent Price (৳) (Optional)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  className="form-control" 
+                  value={productFormRentPrice} 
+                  onChange={e => setProductFormRentPrice(e.target.value)} 
+                  placeholder="0.00" 
+                  style={{ height: '38px', fontSize: '13px' }} 
+                />
+              </div>
+
+              <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Description</label>
                 <textarea className="form-control" value={productFormDesc} onChange={e => setProductFormDesc(e.target.value)} placeholder="Product description..." rows={3} style={{ height: 'auto', fontSize: '13px' }} />
               </div>
@@ -2085,7 +2100,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     <col style={{ width: '140px' }} />
                     <col style={{ width: '95px' }} />
                     <col style={{ width: '100px' }} />
-                    {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                    {(isRentalCategoryOrProduct(activeProduct)) && (
                       <col style={{ width: '105px' }} />
                     )}
                     <col style={{ width: '65px' }} />
@@ -2125,10 +2140,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                           </label>
                         </div>
                       </th>
-                      {((activeProduct?.category || '').toLowerCase().includes('sherwani')) && (
+                      {(isRentalCategoryOrProduct(activeProduct)) && (
                         <th style={{ padding: '6px 8px', fontSize: '11.5px', color: '#166534', backgroundColor: '#ecfdf5' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                            <span>Rent (৳) *</span>
+                            <span>Rent (৳)</span>
                             <label title="Copy Row #1 Rent to all below rows" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '10.5px', color: '#059669', fontWeight: 700, margin: 0 }}>
                               <input
                                 type="checkbox"
@@ -2148,13 +2163,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                   <tbody>
                     {variantRows.length === 0 ? (
                       <tr>
-                        <td colSpan={((activeProduct?.category || '').toLowerCase().includes('sherwani')) ? 9 : 8} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                        <td colSpan={(isRentalCategoryOrProduct(activeProduct)) ? 9 : 8} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
                           No variants added yet. Click size buttons above or click <strong>"+"</strong> button.
                         </td>
                       </tr>
                     ) : (
                       variantRows.map((row, idx) => {
-                        const isSherwani = (activeProduct?.category || '').toLowerCase().includes('sherwani');
+                        const isRental = isRentalCategoryOrProduct(activeProduct);
                         return (
                           <tr key={row.tempId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)', padding: '5px 4px' }}>
@@ -2208,7 +2223,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                                 required
                               />
                             </td>
-                            {isSherwani && (
+                            {isRental && (
                               <td style={{ padding: '5px 8px', backgroundColor: '#f0fdf4' }}>
                                 <input 
                                   type="number" 
@@ -2216,9 +2231,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                                   className="form-control" 
                                   value={row.rent_price !== undefined && row.rent_price !== null ? (row.rent_price || '') : ''} 
                                   onChange={e => handleUpdateRow(row.tempId, 'rent_price', Number(e.target.value))}
-                                  placeholder="Rent *" 
-                                  style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 800, color: '#166534', borderColor: (row.rent_price ?? 0) <= 0 ? '#fda4af' : '#86efac', padding: '2px 8px' }}
-                                  required
+                                  placeholder="0.00" 
+                                  style={{ width: '100%', boxSizing: 'border-box', height: '28px', fontSize: '12px', fontWeight: 800, color: '#166534', borderColor: '#86efac', padding: '2px 8px' }}
                                 />
                               </td>
                             )}
@@ -2365,8 +2379,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                 </div>
               </div>
 
-              {((activeProduct?.category || editVariantModal.product?.category || '').toLowerCase().includes('sherwani')) ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              {(isRentalCategoryOrProduct(activeProduct || editVariantModal.product)) ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Cost Price (৳)</label>
                     <input type="number" step="0.01" className="form-control" value={editCostPrice} onChange={e => setEditCostPrice(Number(e.target.value))} style={{ height: '38px', fontSize: '13px' }} />
@@ -2375,9 +2389,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
                     <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Selling Price (৳) *</label>
                     <input type="number" step="0.01" className="form-control" value={editSellPrice} onChange={e => setEditSellPrice(Number(e.target.value))} required style={{ height: '38px', fontSize: '13px', fontWeight: 700 }} />
                   </div>
-                  <div className="form-group" style={{ backgroundColor: '#f0fdf4', padding: '4px 8px', borderRadius: '6px', border: '1.5px solid #86efac' }}>
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '12px', color: '#166534', margin: 0 }}>Rent Price (৳) *</label>
-                    <input type="number" step="0.01" className="form-control" value={editRentPrice} onChange={e => setEditRentPrice(Number(e.target.value))} required style={{ height: '30px', fontSize: '13px', fontWeight: 800, color: '#166534', borderColor: '#4ade80', marginTop: '2px' }} />
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '12px', color: '#166534' }}>Rent Price (৳)</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      className="form-control" 
+                      value={editRentPrice} 
+                      onChange={e => setEditRentPrice(Number(e.target.value))} 
+                      style={{ height: '38px', fontSize: '13px', fontWeight: 800, color: '#166534', backgroundColor: '#f0fdf4', borderColor: '#86efac' }} 
+                      placeholder="0.00" 
+                    />
                   </div>
                 </div>
               ) : (

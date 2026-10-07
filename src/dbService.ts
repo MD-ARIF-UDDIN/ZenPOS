@@ -290,7 +290,7 @@ export const dbService = {
     }
     let query = supabase
       .from('sales')
-      .select('*')
+      .select('*, sale_items(id, variant_id, quantity, unit_price, total_price, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
       .order('sale_date', { ascending: false });
 
     if (limit) {
@@ -321,7 +321,7 @@ export const dbService = {
       variant: ProductVariant;
       quantity: number;
       customPrice?: number;
-      saleType?: 'SALE' | 'RENT';
+      saleType?: 'SALE' | 'RENT' | 'RETURN';
       returnDate?: string | null;
     }[],
     discount: number,
@@ -329,15 +329,23 @@ export const dbService = {
     receivedAmount: number,
     customerPhone: string = ''
   ) {
-    const subtotal = cart.reduce((acc, item) => acc + (item.quantity * (item.customPrice || item.variant.selling_price)), 0);
-    const payableAmount = Math.max(0, subtotal - discount);
-    const changeAmount = receivedAmount > payableAmount ? receivedAmount - payableAmount : 0;
-    const dueAmount = paymentMethod === 'DUE' ? payableAmount : (receivedAmount < payableAmount ? payableAmount - receivedAmount : 0);
+    const salesSubtotal = cart
+      .filter(item => item.saleType !== 'RETURN')
+      .reduce((acc, item) => acc + (item.quantity * (item.customPrice !== undefined ? item.customPrice : (item.saleType === 'RENT' ? (item.variant.rent_price || item.variant.product?.rent_price || item.variant.selling_price) : item.variant.selling_price))), 0);
+
+    const returnsTotal = cart
+      .filter(item => item.saleType === 'RETURN')
+      .reduce((acc, item) => acc + (item.quantity * (item.customPrice !== undefined ? item.customPrice : item.variant.selling_price)), 0);
+
+    const netSubtotal = salesSubtotal - returnsTotal;
+    const payableAmount = netSubtotal - discount;
+    const changeAmount = payableAmount > 0 && receivedAmount > payableAmount ? receivedAmount - payableAmount : 0;
+    const dueAmount = paymentMethod === 'DUE' ? payableAmount : (payableAmount > 0 && receivedAmount < payableAmount ? payableAmount - receivedAmount : 0);
 
     const { data: sale, error: saleError } = await supabase
       .from('sales')
       .insert({
-        total_amount: subtotal,
+        total_amount: netSubtotal,
         discount_amount: discount,
         payable_amount: payableAmount,
         payment_method: paymentMethod,
@@ -353,16 +361,22 @@ export const dbService = {
 
     if (sale) {
       const saleItems = cart.map(item => {
-        const itemPrice = item.customPrice || item.variant.selling_price;
+        const isReturn = item.saleType === 'RETURN';
+        const isRent = item.saleType === 'RENT';
+        const defaultPrice = isRent 
+          ? (item.variant.rent_price || item.variant.product?.rent_price || item.variant.selling_price)
+          : item.variant.selling_price;
+        const itemPrice = item.customPrice !== undefined ? item.customPrice : defaultPrice;
+
         return {
           sale_id: sale.id,
           variant_id: item.variant.id,
           quantity: item.quantity,
           unit_price: itemPrice,
-          total_price: item.quantity * itemPrice,
+          total_price: isReturn ? -(item.quantity * itemPrice) : (item.quantity * itemPrice),
           sale_type: item.saleType || 'SALE',
-          return_date: item.saleType === 'RENT' ? (item.returnDate || null) : null,
-          is_returned: false
+          return_date: isRent ? (item.returnDate || null) : null,
+          is_returned: isReturn ? true : false
         };
       });
       
@@ -371,6 +385,29 @@ export const dbService = {
         .insert(saleItems);
 
       if (itemsError) throw itemsError;
+
+      // Restock inventory for returned items and record stock ledger
+      for (const item of cart) {
+        if (item.saleType === 'RETURN') {
+          const { data: vData } = await supabase
+            .from('product_variants')
+            .select('stock_quantity')
+            .eq('id', item.variant.id)
+            .single();
+          if (vData) {
+            await supabase
+              .from('product_variants')
+              .update({ stock_quantity: (vData.stock_quantity || 0) + item.quantity })
+              .eq('id', item.variant.id);
+          }
+          await supabase.from('stock_ledger').insert({
+            variant_id: item.variant.id,
+            quantity_change: item.quantity,
+            transaction_type: 'RETURN',
+            notes: 'POS Product Return / Exchange'
+          });
+        }
+      }
       
       clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger']);
       return sale.id;
@@ -554,51 +591,295 @@ export const dbService = {
     if (!forceRefresh && cache.users && (now - cache.users.timestamp < CACHE_TTL_MS)) {
       return cache.users.data;
     }
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    const result = data || [];
-    cache.users = { data: result, timestamp: now };
-    return result;
+
+    // Read any locally-cached staff extensions (phone, permissions, lock status)
+    let localExtensions: Record<string, any> = {};
+    try {
+      const stored = localStorage.getItem('zenpos_staff_extensions');
+      if (stored) localExtensions = JSON.parse(stored);
+    } catch (e) {
+      console.warn('Failed to parse local staff extensions', e);
+    }
+
+    let remoteUsers: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        remoteUsers = data;
+      }
+    } catch (e) {
+      console.warn('Could not fetch users table:', e);
+    }
+
+    // Merge remote users with extensions
+    const mergedList = remoteUsers.map(u => {
+      const ext = localExtensions[u.id] || {};
+      const phone = u.phone || ext.phone || (u.email && u.email.endsWith('@zenpos.local') ? u.email.replace('@zenpos.local', '') : u.phone || '');
+      const isLocked = u.is_locked !== undefined ? Boolean(u.is_locked) : (ext.is_locked !== undefined ? Boolean(ext.is_locked) : false);
+      
+      let perms = u.permissions || ext.permissions;
+      if (typeof perms === 'string') {
+        try { perms = JSON.parse(perms); } catch { perms = perms.split(',').map((s: string) => s.trim()); }
+      }
+      if (!Array.isArray(perms) || perms.length === 0) {
+        perms = u.role === 'admin' 
+          ? ['pos', 'rentals', 'returns', 'products', 'stock', 'sales', 'expenses', 'users', 'reports']
+          : ['pos', 'rentals', 'returns', 'sales'];
+      }
+
+      return {
+        ...u,
+        phone,
+        is_locked: isLocked,
+        permissions: perms
+      };
+    });
+
+    // Seed Master Administrator Account with all access
+    const masterAccount = {
+      id: '84787c16-4295-4b8f-bc8c-49a01fd12d77',
+      email: '01825334505@zenpos.local',
+      phone: '01825334505',
+      full_name: 'MD Arif Uddin (Master Admin)',
+      role: 'admin',
+      permissions: ['pos', 'rentals', 'returns', 'products', 'stock', 'sales', 'expenses', 'users', 'reports'],
+      is_locked: false
+    };
+
+    const ext = localExtensions[masterAccount.id];
+    if (ext) {
+      if (ext.permissions) masterAccount.permissions = ext.permissions;
+      if (ext.full_name) masterAccount.full_name = ext.full_name;
+    }
+
+    if (!mergedList.some(u => u.id === masterAccount.id || u.phone === masterAccount.phone)) {
+      mergedList.unshift(masterAccount);
+    }
+
+    cache.users = { data: mergedList, timestamp: now };
+    return mergedList;
   },
 
   async updateUserRole(id: string, role: string) {
-    const { data, error } = await supabase
-      .from('users')
-      .update({ role })
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    clearPosCache(['users']);
-    return data;
+    return this.updateStaffProfile(id, { role });
+  },
+
+  async updateStaffProfile(id: string, updates: { full_name?: string; phone?: string; role?: string; permissions?: string[]; is_locked?: boolean }) {
+    // 1. Update local extensions store
+    try {
+      let localExtensions: Record<string, any> = {};
+      const stored = localStorage.getItem('zenpos_staff_extensions');
+      if (stored) localExtensions = JSON.parse(stored);
+      localExtensions[id] = { ...(localExtensions[id] || {}), ...updates };
+      localStorage.setItem('zenpos_staff_extensions', JSON.stringify(localExtensions));
+    } catch (e) {
+      console.warn('Failed to save staff extensions to local store', e);
+    }
+
+    // 2. Try updating remote supabase users table
+    try {
+      const payload: any = {};
+      if (updates.full_name !== undefined) payload.full_name = updates.full_name;
+      if (updates.role !== undefined) payload.role = updates.role;
+      if (updates.phone !== undefined) payload.phone = updates.phone;
+      if (updates.is_locked !== undefined) payload.is_locked = updates.is_locked;
+      if (updates.permissions !== undefined) payload.permissions = updates.permissions;
+
+      const { data, error } = await supabase
+        .from('users')
+        .update(payload)
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        // If error is due to missing column in remote DB, fallback to updating just role / full_name
+        console.warn('Full update note:', error.message);
+        await supabase
+          .from('users')
+          .update({ role: updates.role, full_name: updates.full_name })
+          .eq('id', id);
+      }
+      clearPosCache(['users']);
+      return data?.[0] || { id, ...updates };
+    } catch (e) {
+      console.warn('Remote update fallback:', e);
+      clearPosCache(['users']);
+      return { id, ...updates };
+    }
+  },
+
+  async toggleUserLock(id: string, isLocked: boolean) {
+    return this.updateStaffProfile(id, { is_locked: isLocked });
   },
 
   async deleteUser(id: string) {
+    try {
+      let localExtensions: Record<string, any> = {};
+      const stored = localStorage.getItem('zenpos_staff_extensions');
+      if (stored) localExtensions = JSON.parse(stored);
+      delete localExtensions[id];
+      localStorage.setItem('zenpos_staff_extensions', JSON.stringify(localExtensions));
+    } catch (e) {
+      console.warn('Failed to delete staff extension', e);
+    }
+
     const { error } = await supabase
       .from('users')
       .delete()
       .eq('id', id);
-    if (error) throw error;
+    if (error) console.warn('Supabase delete user note:', error);
     clearPosCache(['users']);
   },
 
-  async getUserRole(userId: string, fallbackRole = 'cashier'): Promise<string> {
+  async getUserProfile(userId: string): Promise<{ role: string; permissions: string[]; is_locked: boolean; phone?: string; full_name?: string } | null> {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .maybeSingle();
-      if (!error && data?.role) {
-        return data.role;
+      const users = await this.getUsers(true);
+      const matched = users.find(u => u.id === userId || u.email === userId || u.phone === userId);
+      if (matched) {
+        return {
+          role: matched.role || 'cashier',
+          permissions: matched.permissions || ['pos', 'rentals', 'returns', 'sales'],
+          is_locked: Boolean(matched.is_locked),
+          phone: matched.phone || '',
+          full_name: matched.full_name || ''
+        };
       }
     } catch (e) {
-      console.warn('Could not fetch role from users table:', e);
+      console.warn('Could not fetch user profile:', e);
     }
-    return fallbackRole;
+    return null;
+  },
+
+  async getUserRole(userId: string, fallbackRole = 'cashier'): Promise<string> {
+    const profile = await this.getUserProfile(userId);
+    return profile?.role || fallbackRole;
+  },
+
+  async getRentals() {
+    const { data, error } = await supabase
+      .from('sale_items')
+      .select('*, variant:product_variants(*, product:products(*)), sale:sales(*)')
+      .eq('sale_type', 'RENT')
+      .order('id', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async markRentalReturned(
+    saleItemId: string,
+    variantId: string,
+    currentStock: number,
+    paymentCollection?: {
+      saleId: string;
+      collectAmount: number;
+      paymentMethod: string;
+    }
+  ) {
+    const { data, error } = await supabase
+      .from('sale_items')
+      .update({ is_returned: true })
+      .eq('id', saleItemId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    // Increment variant stock by 1
+    const { error: stockErr } = await supabase
+      .from('product_variants')
+      .update({ stock_quantity: currentStock + 1 })
+      .eq('id', variantId);
+    if (stockErr) console.warn('Could not increment stock for returned rental:', stockErr);
+
+    // Record stock ledger entry
+    await supabase.from('stock_ledger').insert({
+      variant_id: variantId,
+      quantity_change: 1,
+      transaction_type: 'RETURN',
+      notes: 'Rental item returned to inventory'
+    });
+
+    // Handle payment collection if provided
+    if (paymentCollection && paymentCollection.collectAmount > 0) {
+      const { data: currentSale, error: fetchErr } = await supabase
+        .from('sales')
+        .select('*')
+        .eq('id', paymentCollection.saleId)
+        .single();
+
+      if (!fetchErr && currentSale) {
+        const newReceived = Number(currentSale.received_amount || 0) + paymentCollection.collectAmount;
+        const newDue = Math.max(0, Number(currentSale.due_amount || 0) - paymentCollection.collectAmount);
+        await supabase
+          .from('sales')
+          .update({
+            received_amount: newReceived,
+            due_amount: newDue,
+            payment_method: paymentCollection.paymentMethod || currentSale.payment_method
+          })
+          .eq('id', paymentCollection.saleId);
+      }
+    }
+
+    clearPosCache(['variants', 'stock_ledger', 'sale_items_detailed', 'sales']);
+    return data;
+  },
+
+  async collectRentalDuePayment(saleId: string, collectAmount: number, paymentMethod: string) {
+    const { data: currentSale, error: fetchErr } = await supabase
+      .from('sales')
+      .select('*')
+      .eq('id', saleId)
+      .single();
+    if (fetchErr) throw fetchErr;
+
+    const newReceived = Number(currentSale.received_amount || 0) + collectAmount;
+    const newDue = Math.max(0, Number(currentSale.due_amount || 0) - collectAmount);
+    const { data, error } = await supabase
+      .from('sales')
+      .update({
+        received_amount: newReceived,
+        due_amount: newDue,
+        payment_method: paymentMethod || currentSale.payment_method
+      })
+      .eq('id', saleId)
+      .select()
+      .single();
+    if (error) throw error;
+    clearPosCache(['sales', 'sale_items_detailed']);
+    return data;
+  },
+
+  async applyRentalDiscount(saleId: string, discountAmount: number) {
+    const { data: currentSale, error: fetchErr } = await supabase
+      .from('sales')
+      .select('*')
+      .eq('id', saleId)
+      .single();
+    if (fetchErr) throw fetchErr;
+
+    const total = Number(currentSale.total_amount || 0);
+    const validDiscount = Math.min(total, Math.max(0, Number(discountAmount || 0)));
+    const newPayable = Math.max(0, total - validDiscount);
+    const currentReceived = Number(currentSale.received_amount || 0);
+    const newDue = Math.max(0, newPayable - currentReceived);
+
+    const { data, error } = await supabase
+      .from('sales')
+      .update({
+        discount_amount: validDiscount,
+        payable_amount: newPayable,
+        due_amount: newDue
+      })
+      .eq('id', saleId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    clearPosCache(['sales', 'sale_items_detailed']);
+    return data;
   },
 
   async getSaleItemsDetailed(forceRefresh = false) {

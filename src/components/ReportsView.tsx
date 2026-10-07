@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Boxes } from 'lucide-react';
+import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Boxes, RotateCcw } from 'lucide-react';
 import { Pagination } from './Pagination';
 
 type DateFilter = 'today' | 'week' | 'month' | 'all';
@@ -14,7 +14,7 @@ export const ReportsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   // Date filter & pagination state
-  const [filter, setFilter] = useState<DateFilter>('all');
+  const [filter, setFilter] = useState<DateFilter>('today');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -75,10 +75,24 @@ export const ReportsView: React.FC = () => {
   const totalRevenue = filteredSales.reduce((acc, s) => acc + Number(s.payable_amount), 0);
   
   let totalProfit = 0; // Gross profit (Revenue - COGS)
+  let totalRefunds = 0;
+  let totalReturnedUnits = 0;
+
   filteredItems.forEach(si => {
+    const isReturn = si.sale_type === 'RETURN' || si.is_returned;
     const v = variants.find(x => x.id === si.variant_id);
-    if (v) {
-      totalProfit += (si.quantity * (si.unit_price - v.purchase_price));
+    if (isReturn) {
+      totalRefunds += Math.abs(Number(si.total_price || (si.quantity * si.unit_price) || 0));
+      totalReturnedUnits += Number(si.quantity || 0);
+      if (v) {
+        const profitLoss = Number(si.quantity || 0) * (Number(si.unit_price || 0) - Number(v.purchase_price || 0));
+        totalProfit -= profitLoss;
+      }
+    } else {
+      if (v) {
+        const profitGain = Number(si.quantity || 0) * (Number(si.unit_price || 0) - Number(v.purchase_price || 0));
+        totalProfit += profitGain;
+      }
     }
   });
 
@@ -87,35 +101,106 @@ export const ReportsView: React.FC = () => {
   const totalStockValuation = variants.reduce((acc, v) => acc + ((v.stock_quantity || 0) * (v.purchase_price || 0)), 0);
   const overallNetProfit = totalProfit - totalExpenses;
 
-  // Compute Top Selling Products & Product-wise Breakdown
-  const productStatsMap: { [key: string]: { name: string; sku: string; barcode: string; size: string; color: string; qty: number; revenue: number; profit: number } } = {};
+  const getDateKey = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const formatDateDisplay = (dateKey: string) => {
+    try {
+      const parts = dateKey.split('-');
+      if (parts.length === 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return d.toLocaleDateString(undefined, {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
+      return dateKey;
+    } catch {
+      return dateKey;
+    }
+  };
+
+  // Date-wise Breakdown
+  const dateStatsMap: {
+    [key: string]: {
+      dateKey: string;
+      orderCount: number;
+      unitsSold: number;
+      revenue: number;
+      productProfit: number;
+      expenses: number;
+      netProfit: number;
+    }
+  } = {};
+
+  const getOrCreateDateStat = (dateKey: string) => {
+    if (!dateStatsMap[dateKey]) {
+      dateStatsMap[dateKey] = {
+        dateKey,
+        orderCount: 0,
+        unitsSold: 0,
+        revenue: 0,
+        productProfit: 0,
+        expenses: 0,
+        netProfit: 0
+      };
+    }
+    return dateStatsMap[dateKey];
+  };
+
+  filteredSales.forEach(s => {
+    const key = getDateKey(s.sale_date);
+    if (!key) return;
+    const stat = getOrCreateDateStat(key);
+    stat.orderCount += 1;
+    stat.revenue += Number(s.payable_amount || 0);
+  });
 
   filteredItems.forEach(si => {
+    if (!si.sale?.sale_date) return;
+    const key = getDateKey(si.sale.sale_date);
+    if (!key) return;
+    const stat = getOrCreateDateStat(key);
+    const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+
+    if (isReturn) {
+      stat.unitsSold -= Number(si.quantity || 0);
+    } else {
+      stat.unitsSold += Number(si.quantity || 0);
+    }
+
     const v = variants.find(x => x.id === si.variant_id);
     if (v) {
-      const key = v.id;
-      const profitVal = si.quantity * (si.unit_price - v.purchase_price);
-      if (productStatsMap[key]) {
-        productStatsMap[key].qty += si.quantity;
-        productStatsMap[key].revenue += si.total_price;
-        productStatsMap[key].profit += profitVal;
+      const profitVal = Number(si.quantity || 0) * (Number(si.unit_price || 0) - Number(v.purchase_price || 0));
+      if (isReturn) {
+        stat.productProfit -= profitVal;
       } else {
-        productStatsMap[key] = {
-          name: v.product?.name || 'Unknown Product',
-          sku: v.sku,
-          barcode: v.barcode,
-          size: v.size,
-          color: v.color,
-          qty: si.quantity,
-          revenue: si.total_price,
-          profit: profitVal
-        };
+        stat.productProfit += profitVal;
       }
     }
   });
 
-  const productStatsList = Object.values(productStatsMap).sort((a, b) => b.qty - a.qty);
-  const topSellingList = productStatsList.slice(0, 5);
+  filteredExpenses.forEach(exp => {
+    const key = getDateKey(exp.expense_date);
+    if (!key) return;
+    const stat = getOrCreateDateStat(key);
+    stat.expenses += Number(exp.amount || 0);
+  });
+
+  Object.values(dateStatsMap).forEach(stat => {
+    stat.netProfit = stat.productProfit - stat.expenses;
+  });
+
+  const dateStatsList = Object.values(dateStatsMap).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 
   if (loading) return <div style={{ padding: '24px' }}>Loading business analytics...</div>;
 
@@ -138,7 +223,10 @@ export const ReportsView: React.FC = () => {
             <button
               key={option}
               className="btn btn-sm"
-              onClick={() => setFilter(option)}
+              onClick={() => {
+                setFilter(option);
+                setCurrentPage(1);
+              }}
               style={{
                 padding: '4px 10px',
                 fontSize: '11.5px',
@@ -170,6 +258,23 @@ export const ReportsView: React.FC = () => {
             </div>
             <span style={{ background: 'rgba(11, 37, 69, 0.08)', color: 'var(--color-primary)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
               <DollarSign size={18} />
+            </span>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div className="card-title">Returns / Refunds</div>
+              <div className="card-value" style={{ color: totalRefunds > 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                {totalRefunds > 0 ? `-৳${totalRefunds.toFixed(2)}` : '৳0.00'}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {totalReturnedUnits} pcs returned
+              </div>
+            </div>
+            <span style={{ background: '#fee2e2', color: '#dc2626', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+              <RotateCcw size={18} />
             </span>
           </div>
         </div>
@@ -252,122 +357,55 @@ export const ReportsView: React.FC = () => {
 
       </div>
 
-      {/* Top Selling Products */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0 }}>Top Selling Items</h3>
-          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '12px' }}>Top 5</span>
-        </div>
-        {topSellingList.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px', fontSize: '12.5px' }}>
-            No sales recorded for this date filter.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {topSellingList.map((item, idx) => {
-              const maxQty = topSellingList[0].qty;
-              const percentage = (item.qty / maxQty) * 100;
-              const rankColors = ['#d97706', '#64748b', '#b45309', 'var(--text-muted)', 'var(--text-muted)'];
-              const rankBg = ['rgba(217,119,6,0.1)', 'rgba(100,116,139,0.1)', 'rgba(180,83,9,0.1)', 'rgba(148,163,184,0.06)', 'rgba(148,163,184,0.06)'];
-              return (
-                <div key={idx} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 10px',
-                  background: 'var(--bg-primary)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: idx === 0 ? '1px solid rgba(217,119,6,0.2)' : '1px solid transparent'
-                }}>
-                  {/* Rank Badge */}
-                  <div style={{
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '50%',
-                    background: rankBg[idx] || rankBg[4],
-                    color: rankColors[idx] || rankColors[4],
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '11.5px',
-                    flexShrink: 0
-                  }}>
-                    #{idx + 1}
-                  </div>
-
-                  {/* Product Info + Bar */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <div style={{ overflow: 'hidden' }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {item.name}
-                        </div>
-                        <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                          {item.size} · {item.color} · {item.sku}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '8px' }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--color-primary)' }}>{item.qty} units</div>
-                        <div style={{ fontSize: '10.5px', color: 'var(--color-success)', fontWeight: 600 }}>৳{item.revenue.toFixed(0)}</div>
-                      </div>
-                    </div>
-                    <div style={{ width: '100%', height: '4px', background: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{
-                        width: `${percentage}%`,
-                        height: '100%',
-                        background: 'var(--color-primary)',
-                        borderRadius: '2px',
-                        opacity: 1 - idx * 0.12
-                      }}></div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Product-wise Sales Breakdown Table */}
+      {/* Date-wise Performance Breakdown Table */}
       <div>
-        <h3 style={{ marginBottom: '10px', fontSize: '14px', fontWeight: 800 }}>Product-wise Sales Breakdown</h3>
+        <h3 style={{ marginBottom: '10px', fontSize: '14px', fontWeight: 800 }}>Date-wise Performance Breakdown</h3>
         <div className="table-container">
           <table className="table">
             <thead>
               <tr>
                 <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
-                <th>Clothing Product</th>
-                <th>SKU</th>
-                <th>Barcode</th>
-                <th>Size/Color</th>
+                <th>Date</th>
+                <th style={{ textAlign: 'center' }}>Orders</th>
                 <th style={{ textAlign: 'center' }}>Units Sold</th>
-                <th style={{ textAlign: 'right' }}>Revenue</th>
-                <th style={{ textAlign: 'right' }}>Total Profit</th>
+                <th style={{ textAlign: 'right' }}>Total Sales</th>
+                <th style={{ textAlign: 'right' }}>Product Profit</th>
+                <th style={{ textAlign: 'right' }}>Expenses</th>
+                <th style={{ textAlign: 'right' }}>Net Profit</th>
               </tr>
             </thead>
             <tbody>
-              {productStatsList.length === 0 ? (
+              {dateStatsList.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
-                    No products sold in this time range.
+                    No sales or expense activity recorded for this time range.
                   </td>
                 </tr>
               ) : (
-                productStatsList
+                dateStatsList
                   .slice((currentPage - 1) * pageSize, currentPage * pageSize)
                   .map((item, idx) => (
-                  <tr key={idx}>
+                  <tr key={item.dateKey}>
                     <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                       {(currentPage - 1) * pageSize + idx + 1}
                     </td>
-                    <td style={{ fontWeight: 600, fontSize: '12.5px' }}>{item.name}</td>
-                    <td style={{ fontSize: '12px' }}>{item.sku}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>{item.barcode}</td>
-                    <td style={{ fontSize: '12px' }}>{item.size} / {item.color}</td>
-                    <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.qty}</td>
+                    <td style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                      {formatDateDisplay(item.dateKey)}
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.orderCount}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.unitsSold}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>৳{item.revenue.toFixed(2)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-success)' }}>৳{item.profit.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-info)' }}>৳{item.productProfit.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: item.expenses > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+                      ৳{item.expenses.toFixed(2)}
+                    </td>
+                    <td style={{ 
+                      textAlign: 'right', 
+                      fontWeight: 800, 
+                      color: item.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' 
+                    }}>
+                      ৳{item.netProfit.toFixed(2)}
+                    </td>
                   </tr>
                 ))
               )}
@@ -375,7 +413,7 @@ export const ReportsView: React.FC = () => {
           </table>
           <Pagination 
             currentPage={currentPage}
-            totalItems={productStatsList.length}
+            totalItems={dateStatsList.length}
             pageSize={pageSize}
             onPageChange={setCurrentPage}
             onPageSizeChange={setPageSize}

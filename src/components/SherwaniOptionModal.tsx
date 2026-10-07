@@ -13,7 +13,9 @@ export const SherwaniOptionModal: React.FC<SherwaniOptionModalProps> = ({
   onConfirm,
   onClose,
 }) => {
-  const defaultRentPrice = variant.rent_price || variant.product?.rent_price || Math.round(variant.selling_price * 0.4);
+  const defaultRentPrice = (variant.rent_price !== undefined && variant.rent_price !== null) 
+    ? Number(variant.rent_price) 
+    : (variant.product?.rent_price !== undefined && variant.product?.rent_price !== null ? Number(variant.product.rent_price) : 0);
   
   // Default return date to 3 days in the future (YYYY-MM-DD)
   const getDefaultReturnDate = () => {
@@ -81,7 +83,7 @@ export const SherwaniOptionModal: React.FC<SherwaniOptionModalProps> = ({
         >
           <div>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--color-primary)' }}>
-              Sherwani Option — Rent or Direct Sale
+              Rent or Direct Sale Option
             </h3>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
               {variant.product?.name} ({[variant.size, variant.color].filter(Boolean).join(' / ')})

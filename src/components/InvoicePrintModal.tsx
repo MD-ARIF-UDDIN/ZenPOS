@@ -13,7 +13,7 @@ export interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
-  saleType?: 'SALE' | 'RENT';
+  saleType?: 'SALE' | 'RENT' | 'RETURN';
   returnDate?: string | null;
 }
 
@@ -218,11 +218,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     const itemsHtml = data.items.map(item => {
       const productCode = item.sku || item.code;
       const isRent = item.saleType === 'RENT';
+      const isReturn = item.saleType === 'RETURN';
       return `
         <div class="item-row" style="margin-bottom: ${settings.itemSpacing}mm;">
           <div class="item-name">
             ${item.name} ${item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
             ${isRent ? `<span style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; border: 1px solid #000; padding: 0 2px; border-radius: 2px; margin-left: 1mm; font-weight: 900;">[RENT]</span>` : ''}
+            ${isReturn ? `<span style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; border: 1px solid #000; padding: 0 2px; border-radius: 2px; margin-left: 1mm; font-weight: 900;">[RETURN]</span>` : ''}
           </div>
           ${isRent && item.returnDate ? `
             <div style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; font-weight: 800; color: #000000;">
@@ -235,8 +237,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             </div>
           ` : ''}
           <div class="item-details">
-            <span>${item.quantity} × ৳${item.unitPrice.toFixed(0)}</span>
-            <span class="item-price">৳${item.totalPrice.toFixed(0)}</span>
+            <span>${item.quantity} × ${isReturn ? '-' : ''}৳${item.unitPrice.toFixed(0)}</span>
+            <span class="item-price">${isReturn ? '-' : ''}৳${Math.abs(item.totalPrice).toFixed(0)}</span>
           </div>
         </div>
       `;
@@ -478,8 +480,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 ` : ''}
 
                 <div class="total-row">
-                  <span>TOTAL:</span>
-                  <span>৳${data.payableAmount.toFixed(0)}</span>
+                  <span>${data.payableAmount < 0 ? 'REFUND / CASH RETURN:' : 'TOTAL:'}</span>
+                  <span>${data.payableAmount < 0 ? '-৳' + Math.abs(data.payableAmount).toFixed(0) : '৳' + data.payableAmount.toFixed(0)}</span>
                 </div>
 
                 ${settings.showPaymentBreakdown ? `
@@ -1092,6 +1094,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 {data.items.map((item, idx) => {
                   const productCode = item.sku || item.code;
                   const isRent = item.saleType === 'RENT';
+                  const isReturn = item.saleType === 'RETURN';
                   return (
                     <div key={idx} style={{ marginBottom: `${settings.itemSpacing * 3.5}px` }}>
                       <div style={{ fontWeight: 900, wordBreak: 'break-word', overflowWrap: 'break-word', color: '#000000' }}>
@@ -1099,6 +1102,11 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                         {isRent && (
                           <span style={{ fontSize: `${baseFontSize * 0.82}px`, border: '1px solid #000', padding: '0 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 900 }}>
                             [RENT]
+                          </span>
+                        )}
+                        {isReturn && (
+                          <span style={{ fontSize: `${baseFontSize * 0.82}px`, border: '1px solid #000', padding: '0 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 900 }}>
+                            [RETURN]
                           </span>
                         )}
                       </div>
@@ -1113,8 +1121,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                         </div>
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000' }}>
-                        <span>{item.quantity} × ৳${item.unitPrice.toFixed(0)}</span>
-                        <span style={{ fontWeight: 900, flexShrink: 0, paddingLeft: '4px' }}>৳{item.totalPrice.toFixed(0)}</span>
+                        <span>${item.quantity} × ${isReturn ? '-' : ''}৳${item.unitPrice.toFixed(0)}</span>
+                        <span style={{ fontWeight: 900, flexShrink: 0, paddingLeft: '4px' }}>${isReturn ? '-' : ''}৳${Math.abs(item.totalPrice).toFixed(0)}</span>
                       </div>
                     </div>
                   );
@@ -1147,8 +1155,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                   marginTop: '2px',
                   color: '#000000'
                 }}>
-                  <span>TOTAL:</span>
-                  <span>৳{data.payableAmount.toFixed(0)}</span>
+                  <span>{data.payableAmount < 0 ? 'REFUND / CASH RETURN:' : 'TOTAL:'}</span>
+                  <span>{data.payableAmount < 0 ? `-৳${Math.abs(data.payableAmount).toFixed(0)}` : `৳${data.payableAmount.toFixed(0)}`}</span>
                 </div>
 
                 {settings.showPaymentBreakdown && (

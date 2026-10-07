@@ -29,7 +29,7 @@ export interface CartItem {
   quantity: number;
   discount: number; // Flat discount per item
   customPrice?: number; // Custom inputted price
-  saleType?: 'SALE' | 'RENT';
+  saleType?: 'SALE' | 'RENT' | 'RETURN';
   returnDate?: string | null;
 }
 
@@ -38,11 +38,12 @@ interface POSState {
   discount: number; // Global flat discount
   paymentMethod: 'CASH' | 'CARD' | 'MOBILE_PAY';
   receivedAmount: number;
-  addToCart: (variant: ProductVariant, saleType?: 'SALE' | 'RENT', customPrice?: number, returnDate?: string | null) => void;
-  removeFromCart: (variantId: string, saleType?: 'SALE' | 'RENT') => void;
-  updateCartQty: (variantId: string, quantity: number, saleType?: 'SALE' | 'RENT') => void;
-  updateCartPrice: (variantId: string, price: number, saleType?: 'SALE' | 'RENT') => void;
-  updateCartReturnDate: (variantId: string, returnDate: string | null, saleType?: 'SALE' | 'RENT') => void;
+  addToCart: (variant: ProductVariant, saleType?: 'SALE' | 'RENT' | 'RETURN', customPrice?: number, returnDate?: string | null) => void;
+  removeFromCart: (variantId: string, saleType?: 'SALE' | 'RENT' | 'RETURN') => void;
+  updateCartQty: (variantId: string, quantity: number, saleType?: 'SALE' | 'RENT' | 'RETURN') => void;
+  updateCartPrice: (variantId: string, price: number, saleType?: 'SALE' | 'RENT' | 'RETURN') => void;
+  updateCartReturnDate: (variantId: string, returnDate: string | null, saleType?: 'SALE' | 'RENT' | 'RETURN') => void;
+  updateCartSaleType: (variantId: string, currentSaleType: 'SALE' | 'RENT' | 'RETURN', newSaleType: 'SALE' | 'RENT' | 'RETURN') => void;
   clearCart: () => void;
   setDiscount: (discount: number) => void;
   setPaymentMethod: (method: 'CASH' | 'CARD' | 'MOBILE_PAY') => void;
@@ -57,7 +58,7 @@ export const usePOSStore = create<POSState>((set) => ({
 
   addToCart: (variant, saleType = 'SALE', customPrice, returnDate = null) => set((state) => {
     const defaultPrice = saleType === 'RENT' 
-      ? (variant.rent_price || variant.product?.rent_price || variant.selling_price)
+      ? Number(variant.rent_price ?? variant.product?.rent_price ?? 0)
       : variant.selling_price;
     const finalPrice = customPrice !== undefined ? customPrice : defaultPrice;
 
@@ -117,6 +118,23 @@ export const usePOSStore = create<POSState>((set) => ({
         ? { ...item, returnDate }
         : item
     )
+  })),
+
+  updateCartSaleType: (variantId, currentSaleType, newSaleType) => set((state) => ({
+    cart: state.cart.map(item => {
+      if (item.variant.id === variantId && (item.saleType || 'SALE') === currentSaleType) {
+        const defaultPrice = newSaleType === 'RENT'
+          ? (item.variant.rent_price || item.variant.product?.rent_price || item.variant.selling_price)
+          : item.variant.selling_price;
+        return {
+          ...item,
+          saleType: newSaleType,
+          customPrice: defaultPrice,
+          returnDate: newSaleType === 'RENT' ? item.returnDate : null
+        };
+      }
+      return item;
+    })
   })),
 
   clearCart: () => set({ cart: [], discount: 0, receivedAmount: 0, paymentMethod: 'CASH' }),

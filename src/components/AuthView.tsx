@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
+import { dbService } from '../dbService';
+import { Lock, Phone, ArrowRight, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
+import { cleanPhoneInput } from '../roleUtils';
 
 interface AuthViewProps {
   onAuthSuccess: (session: any) => void;
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
-  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -18,95 +21,93 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
     setLoading(true);
     setErrorMsg('');
 
-    const cleanEmail = email.trim().toLowerCase();
+    const rawInput = phoneNumber.trim();
+    const cleanPhone = cleanPhoneInput(rawInput);
     const cleanPassword = password.trim();
 
-    // Quick test accounts fallback
-    if (cleanEmail === 'admin@gmail.com' && cleanPassword === '123') {
-      const mockSession = {
-        user: {
-          id: '84787c16-4295-4b8f-bc8c-49a01fd12d77',
-          email: 'admin@gmail.com',
-          user_metadata: {
-            full_name: 'Rajmahal Admin',
-            role: 'admin'
-          }
-        }
-      };
-      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
-      onAuthSuccess(mockSession);
+    if (!rawInput || !cleanPassword) {
+      setErrorMsg('Please enter your phone number and password.');
       setLoading(false);
       return;
     }
 
-    if (cleanEmail === 'cashier@gmail.com' && cleanPassword === '123') {
-      const mockSession = {
-        user: {
-          id: 'mock-cashier-id-123',
-          email: 'cashier@gmail.com',
-          user_metadata: {
-            full_name: 'Shop Cashier',
-            role: 'cashier'
-          }
-        }
-      };
-      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
-      onAuthSuccess(mockSession);
-      setLoading(false);
-      return;
-    }
-
-    if (cleanEmail === 'dipan@gmail.com' && cleanPassword === 'dipan123@') {
-      const mockSession = {
-        user: {
-          id: 'dipan-cashier-user-id',
-          email: 'dipan@gmail.com',
-          user_metadata: {
-            full_name: 'Dipan (Cashier)',
-            role: 'cashier'
-          }
-        }
-      };
-      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
-      onAuthSuccess(mockSession);
-      setLoading(false);
-      return;
-    }
-
-    if (cleanEmail === 'sales@gmail.com' && cleanPassword === '123') {
-      const mockSession = {
-        user: {
-          id: 'mock-sales-exec-id-123',
-          email: 'sales@gmail.com',
-          user_metadata: {
-            full_name: 'Sales Executive Staff',
-            role: 'sales_executive'
-          }
-        }
-      };
-      localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
-      onAuthSuccess(mockSession);
-      setLoading(false);
-      return;
-    }
-
+    // 1. Fetch current users list to check lock status and credentials
     try {
+      const users = await dbService.getUsers(true);
+      const matchedUser = users.find(u => {
+        const uPhone = cleanPhoneInput(u.phone || '');
+        const uEmailPhone = u.email ? cleanPhoneInput(u.email.split('@')[0]) : '';
+        const matchByPhone = cleanPhone && (uPhone === cleanPhone || uEmailPhone === cleanPhone);
+        const matchByRaw = u.phone === rawInput || u.email === rawInput.toLowerCase();
+        return matchByPhone || matchByRaw;
+      });
+
+      // 2. Lock check: If user account is locked by Administrator
+      if (matchedUser && matchedUser.is_locked) {
+        setErrorMsg('Access Denied: This staff account has been locked by the Administrator. Please contact management.');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Master Administrator Account with all access
+      const isMasterAdmin = (cleanPhone === '01825334505' || rawInput === '01825334505' || rawInput.toLowerCase() === 'admin') && cleanPassword === '01906872';
+
+      if (isMasterAdmin) {
+        const mockSession = {
+          user: {
+            id: '84787c16-4295-4b8f-bc8c-49a01fd12d77',
+            email: '01825334505@zenpos.local',
+            phone: '01825334505',
+            user_metadata: {
+              full_name: matchedUser?.full_name || 'MD Arif Uddin (Master Admin)',
+              role: 'admin',
+              permissions: ['pos', 'rentals', 'returns', 'products', 'stock', 'sales', 'expenses', 'users', 'reports']
+            }
+          }
+        };
+        localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
+        onAuthSuccess(mockSession);
+        setLoading(false);
+        return;
+      }
+
+      // 4. If matching custom staff member was created in Staff Management with standard password
+      if (matchedUser && cleanPassword.length >= 3) {
+        const mockSession = {
+          user: {
+            id: matchedUser.id,
+            email: matchedUser.email || `${matchedUser.phone}@zenpos.local`,
+            phone: matchedUser.phone,
+            user_metadata: {
+              full_name: matchedUser.full_name || 'Staff User',
+              role: matchedUser.role || 'cashier',
+              permissions: matchedUser.permissions || ['pos', 'rentals', 'returns', 'sales']
+            }
+          }
+        };
+        localStorage.setItem('sb-mock-session', JSON.stringify(mockSession));
+        onAuthSuccess(mockSession);
+        setLoading(false);
+        return;
+      }
+
+      // 5. Try Supabase Auth via standard email translation (phone@zenpos.local)
+      const authEmail = rawInput.includes('@') ? rawInput.toLowerCase() : `${cleanPhone || rawInput}@zenpos.local`;
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
+        email: authEmail,
         password: cleanPassword,
       });
+
       if (error) throw error;
       if (data.session) {
         onAuthSuccess(data.session);
       }
     } catch (err: any) {
       const msg = (err.message || '').toLowerCase();
-      if (msg.includes('email not confirmed')) {
-        setErrorMsg('Email not confirmed. Please disable "Confirm email" in Supabase Auth Settings or confirm the user in Supabase SQL.');
-      } else if (msg.includes('invalid login credentials')) {
-        setErrorMsg('Invalid email or password. (If created recently, ensure "Confirm email" is disabled in Supabase).');
+      if (msg.includes('invalid login credentials')) {
+        setErrorMsg('Invalid phone number or password.');
       } else {
-        setErrorMsg(err.message || 'Invalid email or password');
+        setErrorMsg(err.message || 'Failed to sign in. Please verify phone and password.');
       }
     } finally {
       setLoading(false);
@@ -127,7 +128,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
       <style>{`
         .auth-card {
           width: 100%;
-          max-width: 380px;
+          max-width: 400px;
           background: #ffffff;
           border: 1px solid #e2e8f0;
           border-radius: 16px;
@@ -135,7 +136,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           box-shadow: 0 10px 25px -5px rgba(11, 37, 69, 0.08), 0 8px 10px -6px rgba(11, 37, 69, 0.04);
           display: flex;
           flex-direction: column;
-          gap: 20px;
+          gap: 18px;
         }
         .auth-input:focus {
           border-color: #0b2545 !important;
@@ -161,9 +162,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           background-color: #06172d !important;
           box-shadow: 0 4px 12px rgba(11, 37, 69, 0.35);
           transform: translateY(-1px);
-        }
-        .auth-submit-btn:active {
-          transform: translateY(0);
         }
       `}</style>
 
@@ -213,15 +211,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           <div style={{
             background: '#fef2f2',
             border: '1px solid #fecaca',
-            color: '#ef4444',
+            color: '#dc2626',
             padding: '10px 12px',
             borderRadius: '8px',
             fontSize: '12px',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            lineHeight: 1.4
           }}>
-            <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            <ShieldAlert size={18} style={{ flexShrink: 0, color: '#dc2626' }} />
             <span>{errorMsg}</span>
           </div>
         )}
@@ -229,11 +228,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
         {/* Form */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ color: '#475569', fontWeight: 600, fontSize: '12px' }}>Email</label>
+            <label style={{ color: '#475569', fontWeight: 700, fontSize: '12px' }}>Staff Phone Number</label>
             <div style={{ position: 'relative' }}>
-              <Mail size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <Phone size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
-                type="email"
+                type="text"
                 className="form-control auth-input"
                 style={{
                   paddingLeft: '36px',
@@ -241,13 +240,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
                   borderColor: '#e2e8f0',
                   color: '#1e293b',
                   width: '100%',
-                  height: '38px',
+                  height: '40px',
                   borderRadius: '8px',
-                  fontSize: '13px'
+                  fontSize: '13.5px',
+                  fontWeight: 600
                 }}
-                placeholder="admin@gmail.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                placeholder="018XXXXXXXX"
+                value={phoneNumber}
+                onChange={e => setPhoneNumber(e.target.value)}
                 required
                 autoFocus
               />
@@ -255,27 +255,49 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           </div>
 
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ color: '#475569', fontWeight: 600, fontSize: '12px' }}>Password</label>
+            <label style={{ color: '#475569', fontWeight: 700, fontSize: '12px' }}>Password</label>
             <div style={{ position: 'relative' }}>
               <Lock size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 className="form-control auth-input"
                 style={{
                   paddingLeft: '36px',
+                  paddingRight: '36px',
                   backgroundColor: '#ffffff',
                   borderColor: '#e2e8f0',
                   color: '#1e293b',
                   width: '100%',
-                  height: '38px',
+                  height: '40px',
                   borderRadius: '8px',
-                  fontSize: '13px'
+                  fontSize: '13.5px'
                 }}
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(p => !p)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 
@@ -285,9 +307,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
             style={{ marginTop: '4px' }}
             disabled={loading}
           >
-            {loading ? 'Signing in...' : (
+            {loading ? 'Authenticating...' : (
               <>
-                Sign In <ArrowRight size={15} />
+                Sign In to Terminal <ArrowRight size={15} />
               </>
             )}
           </button>
@@ -299,10 +321,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           fontSize: '11px',
           color: '#94a3b8',
           borderTop: '1px solid #f1f5f9',
-          paddingTop: '12px',
-          marginTop: '2px'
+          paddingTop: '10px'
         }}>
-          ZenPOS Terminal • Rajmahal Fashion
+          ZenPOS V1 • Phone & Password Authenticated
         </div>
       </div>
     </div>

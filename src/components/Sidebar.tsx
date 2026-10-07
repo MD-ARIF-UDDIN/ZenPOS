@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Shirt, TrendingUp, AlertTriangle, Users, FileText, X, Receipt } from 'lucide-react';
+import { ShoppingCart, Shirt, TrendingUp, AlertTriangle, Users, FileText, X, Receipt, Clock, RotateCcw } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
-import { isRestrictedStaffRole } from '../roleUtils';
+import { hasModuleAccess } from '../roleUtils';
 
 interface SidebarProps {
   currentTab?: string;
@@ -10,29 +10,38 @@ interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
   userRole?: string;
+  userPermissions?: string[];
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount, isOpen, onClose, userRole }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount: _lowStockCount, isOpen, onClose, userRole, userPermissions }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const activePath = location.pathname.substring(1) || 'pos';
 
-  const isRestricted = isRestrictedStaffRole(userRole);
+  interface MenuItem {
+    id: string;
+    path: string;
+    label: string;
+    icon: any;
+    badge?: number;
+  }
 
-  const allMenuItems = [
+  const allMenuItems: MenuItem[] = [
     { id: 'pos', path: '/pos', label: 'POS Checkout', icon: ShoppingCart },
+    { id: 'rentals', path: '/rentals', label: 'Rentals', icon: Clock },
+    { id: 'returns', path: '/returns', label: 'Returns & Exchanges', icon: RotateCcw },
     { id: 'products', path: '/products', label: 'Products', icon: Shirt },
-    { id: 'stock', path: '/stock', label: 'Stock & Inventory', icon: AlertTriangle, badge: lowStockCount > 0 ? lowStockCount : undefined },
+    { id: 'stock', path: '/stock', label: 'Stock & Inventory', icon: AlertTriangle },
     { id: 'sales', path: '/sales', label: 'Sales History', icon: FileText },
     { id: 'expenses', path: '/expenses', label: 'Expenses', icon: Receipt },
     { id: 'users', path: '/users', label: 'Staff Management', icon: Users },
     { id: 'reports', path: '/reports', label: 'Reports', icon: TrendingUp },
   ];
 
-  // Cashier and Sales Executive ONLY see POS Checkout and Sales History
-  const menuItems = isRestricted
-    ? allMenuItems.filter(item => item.id === 'pos' || item.id === 'sales')
-    : allMenuItems;
+  // Dynamically filter menu items based on staff permissions and role
+  const menuItems = allMenuItems.filter(item => 
+    hasModuleAccess(userPermissions, userRole, item.id)
+  );
 
   const handleItemClick = (path: string) => {
     navigate(path);
@@ -123,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount, isOpen, onClose
           );
         })}
       </ul>
-      <div style={{ marginTop: 'auto', padding: '12px 14px', borderTop: '1px solid var(--border-color)', fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+      <div style={{ marginTop: 'auto', padding: '10px 12px', borderTop: '1px solid var(--border-color)', fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
         <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>ZenPOS V1</div>
         <div style={{ marginTop: '2px', fontSize: '10px' }}>
           By: <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>MD Arif Uddin</span>
