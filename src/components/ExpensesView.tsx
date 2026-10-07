@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { Pagination } from './Pagination';
 
 interface ExpensesViewProps {
@@ -18,10 +18,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Form State
+  // Form State (Add)
   const [category, setCategory] = useState('Utilities');
   const [amount, setAmount] = useState<number>(0);
   const [description, setDescription] = useState('');
+
+  // Form State (Edit)
+  const [editingExpense, setEditingExpense] = useState<any | null>(null);
+  const [editCategory, setEditCategory] = useState('Utilities');
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadExpenses = async () => {
     try {
@@ -62,6 +70,49 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
       showToast(err?.message || 'Error logging expense.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStartEdit = (exp: any) => {
+    setEditingExpense(exp);
+    setEditCategory(exp.category || 'Utilities');
+    setEditAmount(Number(exp.amount) || 0);
+    setEditDescription(exp.description || '');
+    
+    // Format date as YYYY-MM-DD
+    const d = exp.expense_date ? new Date(exp.expense_date) : new Date();
+    const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    setEditDate(dateStr);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+    if (editAmount <= 0) {
+      showToast('Please enter a valid expense amount.', 'warning');
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      showToast('Updating expense...', 'info');
+      const isoDate = editDate ? new Date(editDate).toISOString() : editingExpense.expense_date;
+      await dbService.updateExpense(editingExpense.id, {
+        category: editCategory,
+        amount: editAmount,
+        description: editDescription,
+        expense_date: isoDate
+      });
+
+      setEditingExpense(null);
+      await loadExpenses();
+      onRefreshStats();
+      showToast('Expense updated successfully!', 'success');
+    } catch (err: any) {
+      console.error('Error updating expense:', err);
+      showToast(err?.message || 'Failed to update expense', 'error');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -111,7 +162,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                   <th>Category</th>
                   <th>Description</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
+                  <th style={{ width: '135px', textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -147,9 +198,23 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                         ৳{exp.amount.toFixed(2)}
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button className="btn btn-danger btn-sm" style={{ padding: '0 8px', fontSize: '11px' }} onClick={() => handleDeleteExpense(exp.id)} disabled={deletingId === exp.id}>
-                          {deletingId === exp.id ? '...' : <><Trash2 size={12} style={{ marginRight: '2px' }} /> Delete</>}
-                        </button>
+                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ padding: '0 8px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }} 
+                            onClick={() => handleStartEdit(exp)}
+                          >
+                            <Edit2 size={12} /> Edit
+                          </button>
+                          <button 
+                            className="btn btn-danger btn-sm" 
+                            style={{ padding: '0 8px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }} 
+                            onClick={() => handleDeleteExpense(exp.id)} 
+                            disabled={deletingId === exp.id}
+                          >
+                            {deletingId === exp.id ? '...' : <><Trash2 size={12} /> Delete</>}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -185,9 +250,23 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                       fontSize: '11px',
                       fontWeight: 700
                     }}>{exp.category}</span>
-                    <button className="btn btn-danger btn-sm" style={{ width: '24px', height: '24px', padding: 0 }} onClick={() => handleDeleteExpense(exp.id)} disabled={deletingId === exp.id}>
-                      {deletingId === exp.id ? '...' : <Trash2 size={11} />}
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ width: '26px', height: '26px', padding: 0 }} 
+                        onClick={() => handleStartEdit(exp)}
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button 
+                        className="btn btn-danger btn-sm" 
+                        style={{ width: '26px', height: '26px', padding: 0 }} 
+                        onClick={() => handleDeleteExpense(exp.id)} 
+                        disabled={deletingId === exp.id}
+                      >
+                        {deletingId === exp.id ? '...' : <Trash2 size={12} />}
+                      </button>
+                    </div>
                   </div>
                   
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -212,7 +291,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
         </>
       )}
 
-      {/* LOG EXPENSE MODAL */}
+      {/* LOG NEW EXPENSE MODAL */}
       {showAddModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
           <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '18px' }}>
@@ -266,6 +345,78 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Logging...' : 'Log Expense'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT EXPENSE MODAL */}
+      {editingExpense && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '12px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '18px' }}>
+            <h3 style={{ marginBottom: '12px', fontSize: '16px', fontWeight: 800 }}>Edit Expense Record</h3>
+            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              
+              <div className="form-group">
+                <label className="form-label">Expense Category *</label>
+                <select 
+                  className="form-control" 
+                  value={editCategory} 
+                  onChange={e => setEditCategory(e.target.value)}
+                  required
+                >
+                  <option value="Utilities">Utilities (Electricity, Internet, Water)</option>
+                  <option value="Rent">Rent (Shop/Warehouse)</option>
+                  <option value="Salary">Staff Salaries</option>
+                  <option value="Food & Tea">Food, Tea & Entertainment</option>
+                  <option value="Packaging">Packaging Material</option>
+                  <option value="Marketing">Marketing & Ads</option>
+                  <option value="Others">Others</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Amount (৳) *</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  className="form-control" 
+                  value={editAmount || ''} 
+                  onChange={e => setEditAmount(Number(e.target.value))} 
+                  required 
+                  placeholder="0.00" 
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Expense Date *</label>
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  value={editDate} 
+                  onChange={e => setEditDate(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Description / Remarks</label>
+                <textarea 
+                  className="form-control" 
+                  value={editDescription} 
+                  onChange={e => setEditDescription(e.target.value)} 
+                  placeholder="Details of the expense..." 
+                  rows={2} 
+                  style={{ height: 'auto' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingExpense(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingEdit}>
+                  {savingEdit ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

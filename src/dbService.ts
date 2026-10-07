@@ -1105,5 +1105,44 @@ export const dbService = {
     }
 
     clearPosCache(['expenses']);
+  },
+
+  async updateExpense(id: string, updates: { category?: string; amount?: number; description?: string; expense_date?: string }) {
+    // 1. Try remote update
+    try {
+      const payload: any = {};
+      if (updates.category !== undefined) payload.category = updates.category;
+      if (updates.amount !== undefined) payload.amount = Number(updates.amount);
+      if (updates.description !== undefined) payload.description = updates.description;
+      if (updates.expense_date !== undefined) payload.expense_date = updates.expense_date;
+
+      const { data, error } = await supabase
+        .from('expenses')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+      if (!error && data) {
+        clearPosCache(['expenses']);
+      }
+    } catch (e) {
+      console.warn('Supabase update expense error:', e);
+    }
+
+    // 2. Update in local store
+    try {
+      let localExpenses: any[] = [];
+      const stored = localStorage.getItem('zenpos_local_expenses');
+      if (stored) localExpenses = JSON.parse(stored);
+      const index = localExpenses.findIndex(e => e.id === id);
+      if (index !== -1) {
+        localExpenses[index] = { ...localExpenses[index], ...updates };
+        localStorage.setItem('zenpos_local_expenses', JSON.stringify(localExpenses));
+      }
+    } catch (e) {
+      console.warn('Failed to update local expense:', e);
+    }
+
+    clearPosCache(['expenses']);
   }
 };
