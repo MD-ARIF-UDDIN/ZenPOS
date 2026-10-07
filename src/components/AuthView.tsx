@@ -71,8 +71,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
         return;
       }
 
-      // 4. If matching custom staff member was created in Staff Management with standard password
-      if (matchedUser && cleanPassword.length >= 3) {
+      // 4. If matching custom staff member was created in Staff Management
+      if (matchedUser) {
+        if (matchedUser.password && matchedUser.password !== cleanPassword) {
+          setErrorMsg('Invalid phone number or password.');
+          setLoading(false);
+          return;
+        }
+
         const mockSession = {
           user: {
             id: matchedUser.id,

@@ -592,13 +592,16 @@ export const dbService = {
       return cache.users.data;
     }
 
-    // Read any locally-cached staff extensions (phone, permissions, lock status)
+    // Read any locally-cached staff extensions & custom staff accounts
     let localExtensions: Record<string, any> = {};
+    let localAccounts: Record<string, any> = {};
     try {
-      const stored = localStorage.getItem('zenpos_staff_extensions');
-      if (stored) localExtensions = JSON.parse(stored);
+      const storedExt = localStorage.getItem('zenpos_staff_extensions');
+      if (storedExt) localExtensions = JSON.parse(storedExt);
+      const storedAcc = localStorage.getItem('zenpos_staff_accounts');
+      if (storedAcc) localAccounts = JSON.parse(storedAcc);
     } catch (e) {
-      console.warn('Failed to parse local staff extensions', e);
+      console.warn('Failed to parse local staff storage', e);
     }
 
     let remoteUsers: any[] = [];
@@ -616,7 +619,7 @@ export const dbService = {
 
     // Merge remote users with extensions
     const mergedList = remoteUsers.map(u => {
-      const ext = localExtensions[u.id] || {};
+      const ext = localExtensions[u.id] || localAccounts[u.id] || {};
       const phone = u.phone || ext.phone || (u.email && u.email.endsWith('@zenpos.local') ? u.email.replace('@zenpos.local', '') : u.phone || '');
       const isLocked = u.is_locked !== undefined ? Boolean(u.is_locked) : (ext.is_locked !== undefined ? Boolean(ext.is_locked) : false);
       
@@ -634,8 +637,26 @@ export const dbService = {
         ...u,
         phone,
         is_locked: isLocked,
-        permissions: perms
+        permissions: perms,
+        password: ext.password || u.password
       };
+    });
+
+    // Also append any local custom accounts that might not have synchronized to remote yet
+    Object.values(localAccounts).forEach((acc: any) => {
+      if (acc && acc.id && !mergedList.some(u => u.id === acc.id || u.phone === acc.phone)) {
+        mergedList.push({
+          id: acc.id,
+          phone: acc.phone,
+          email: acc.email || `${acc.phone}@zenpos.local`,
+          full_name: acc.full_name || 'Staff Member',
+          role: acc.role || 'cashier',
+          is_locked: Boolean(acc.is_locked),
+          permissions: acc.permissions || ['pos', 'rentals', 'returns', 'sales'],
+          password: acc.password,
+          created_at: acc.created_at || new Date().toISOString()
+        });
+      }
     });
 
     // Seed Master Administrator Account with all access
@@ -663,18 +684,76 @@ export const dbService = {
     return mergedList;
   },
 
+  async createStaffUser(user: { id?: string; phone: string; email?: string; full_name: string; role: string; permissions?: string[]; is_locked?: boolean; password?: string }) {
+    const userId = user.id || 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const cleanPhone = (user.phone || '').trim().replace(/[^0-9]/g, '');
+    const email = user.email || `${cleanPhone}@zenpos.local`;
+
+    const staffRecord = {
+      id: userId,
+      phone: cleanPhone,
+      email,
+      full_name: user.full_name || 'Staff Member',
+      role: user.role || 'cashier',
+      permissions: user.permissions || ['pos', 'rentals', 'returns', 'sales'],
+      is_locked: Boolean(user.is_locked),
+      password: user.password,
+      created_at: new Date().toISOString()
+    };
+
+    // 1. Save to local staff registry
+    try {
+      let localAccounts: Record<string, any> = {};
+      const stored = localStorage.getItem('zenpos_staff_accounts');
+      if (stored) localAccounts = JSON.parse(stored);
+      localAccounts[userId] = staffRecord;
+      localStorage.setItem('zenpos_staff_accounts', JSON.stringify(localAccounts));
+
+      let localExtensions: Record<string, any> = {};
+      const storedExt = localStorage.getItem('zenpos_staff_extensions');
+      if (storedExt) localExtensions = JSON.parse(storedExt);
+      localExtensions[userId] = staffRecord;
+      localStorage.setItem('zenpos_staff_extensions', JSON.stringify(localExtensions));
+    } catch (e) {
+      console.warn('Failed to save staff account locally:', e);
+    }
+
+    // 2. Try remote Supabase upsert
+    try {
+      await supabase.from('users').upsert({
+        id: userId,
+        email,
+        full_name: user.full_name,
+        role: user.role || 'cashier'
+      });
+    } catch (e) {
+      console.warn('Supabase users upsert note:', e);
+    }
+
+    clearPosCache(['users']);
+    return staffRecord;
+  },
+
   async updateUserRole(id: string, role: string) {
     return this.updateStaffProfile(id, { role });
   },
 
   async updateStaffProfile(id: string, updates: { full_name?: string; phone?: string; role?: string; permissions?: string[]; is_locked?: boolean }) {
-    // 1. Update local extensions store
+    // 1. Update local stores
     try {
       let localExtensions: Record<string, any> = {};
       const stored = localStorage.getItem('zenpos_staff_extensions');
       if (stored) localExtensions = JSON.parse(stored);
       localExtensions[id] = { ...(localExtensions[id] || {}), ...updates };
       localStorage.setItem('zenpos_staff_extensions', JSON.stringify(localExtensions));
+
+      let localAccounts: Record<string, any> = {};
+      const storedAcc = localStorage.getItem('zenpos_staff_accounts');
+      if (storedAcc) localAccounts = JSON.parse(storedAcc);
+      if (localAccounts[id]) {
+        localAccounts[id] = { ...localAccounts[id], ...updates };
+        localStorage.setItem('zenpos_staff_accounts', JSON.stringify(localAccounts));
+      }
     } catch (e) {
       console.warn('Failed to save staff extensions to local store', e);
     }
@@ -695,8 +774,6 @@ export const dbService = {
         .select();
 
       if (error) {
-        // If error is due to missing column in remote DB, fallback to updating just role / full_name
-        console.warn('Full update note:', error.message);
         await supabase
           .from('users')
           .update({ role: updates.role, full_name: updates.full_name })
@@ -722,6 +799,12 @@ export const dbService = {
       if (stored) localExtensions = JSON.parse(stored);
       delete localExtensions[id];
       localStorage.setItem('zenpos_staff_extensions', JSON.stringify(localExtensions));
+
+      let localAccounts: Record<string, any> = {};
+      const storedAcc = localStorage.getItem('zenpos_staff_accounts');
+      if (storedAcc) localAccounts = JSON.parse(storedAcc);
+      delete localAccounts[id];
+      localStorage.setItem('zenpos_staff_accounts', JSON.stringify(localAccounts));
     } catch (e) {
       console.warn('Failed to delete staff extension', e);
     }
@@ -917,37 +1000,110 @@ export const dbService = {
     if (!forceRefresh && cache.expenses && (now - cache.expenses.timestamp < CACHE_TTL_MS)) {
       return cache.expenses.data;
     }
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .order('expense_date', { ascending: false });
-    if (error) throw error;
-    const result = data || [];
-    cache.expenses = { data: result, timestamp: now };
-    return result;
+
+    let localExpenses: any[] = [];
+    try {
+      const stored = localStorage.getItem('zenpos_local_expenses');
+      if (stored) localExpenses = JSON.parse(stored);
+    } catch (e) {
+      console.warn('Failed to parse local expenses', e);
+    }
+
+    let remoteExpenses: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .order('expense_date', { ascending: false });
+      if (!error && data) {
+        remoteExpenses = data;
+      }
+    } catch (e) {
+      console.warn('Could not query remote expenses table:', e);
+    }
+
+    // Merge remote and local (avoiding duplicates by id)
+    const seenIds = new Set(remoteExpenses.map(e => e.id));
+    const merged = [
+      ...remoteExpenses,
+      ...localExpenses.filter(e => !seenIds.has(e.id))
+    ];
+
+    merged.sort((a, b) => new Date(b.expense_date || b.created_at).getTime() - new Date(a.expense_date || a.created_at).getTime());
+
+    cache.expenses = { data: merged, timestamp: now };
+    return merged;
   },
 
   async addExpense(category: string, amount: number, description: string) {
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert({
-        category,
-        amount,
-        description
-      })
-      .select()
-      .single();
-    if (error) throw error;
+    const newId = 'exp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const nowIso = new Date().toISOString();
+    const newRecord = {
+      id: newId,
+      category,
+      amount: Number(amount),
+      description: description || '',
+      expense_date: nowIso,
+      created_at: nowIso
+    };
+
+    // 1. Try remote Supabase insert
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert({
+          category,
+          amount: Number(amount),
+          description: description || '',
+          expense_date: nowIso
+        })
+        .select()
+        .single();
+      if (!error && data) {
+        clearPosCache(['expenses']);
+        return data;
+      }
+    } catch (e) {
+      console.warn('Supabase expense insert error, using local storage fallback:', e);
+    }
+
+    // 2. Local fallback if Supabase table or RLS policy restricts direct anon insert
+    try {
+      let localExpenses: any[] = [];
+      const stored = localStorage.getItem('zenpos_local_expenses');
+      if (stored) localExpenses = JSON.parse(stored);
+      localExpenses.unshift(newRecord);
+      localStorage.setItem('zenpos_local_expenses', JSON.stringify(localExpenses));
+    } catch (e) {
+      console.warn('Failed to save expense locally:', e);
+    }
+
     clearPosCache(['expenses']);
-    return data;
+    return newRecord;
   },
 
   async deleteExpense(id: string) {
-    const { error } = await supabase
-      .from('expenses')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    // 1. Try remote delete
+    try {
+      await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+    } catch (e) {
+      console.warn('Supabase delete expense error:', e);
+    }
+
+    // 2. Remove from local store
+    try {
+      let localExpenses: any[] = [];
+      const stored = localStorage.getItem('zenpos_local_expenses');
+      if (stored) localExpenses = JSON.parse(stored);
+      localExpenses = localExpenses.filter(e => e.id !== id);
+      localStorage.setItem('zenpos_local_expenses', JSON.stringify(localExpenses));
+    } catch (e) {
+      console.warn('Failed to update local expenses after delete:', e);
+    }
+
     clearPosCache(['expenses']);
   }
 };

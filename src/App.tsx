@@ -89,18 +89,24 @@ function App() {
       if (mockSessionStr) {
         try {
           const mockSession = JSON.parse(mockSessionStr);
-          setSession(mockSession);
-          setAuthLoading(false);
-          refreshStats();
-          return;
+          if (mockSession && mockSession.user) {
+            setSession(mockSession);
+            setAuthLoading(false);
+            refreshStats();
+            return;
+          }
         } catch (e) {
           console.error('Failed to parse mock session', e);
         }
       }
       
-      const { data: { session: sbSession } } = await supabase.auth.getSession();
-      if (sbSession) {
-        setSession(sbSession);
+      try {
+        const { data: { session: sbSession } } = await supabase.auth.getSession();
+        if (sbSession) {
+          setSession(sbSession);
+        }
+      } catch (e) {
+        console.error('Failed to get Supabase session', e);
       }
       setAuthLoading(false);
       refreshStats();
@@ -109,12 +115,25 @@ function App() {
     loadSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      // If we signed out of supabase auth, make sure to clear the mock session
-      if (!newSession) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT') {
         localStorage.removeItem('sb-mock-session');
+        setSession(null);
+      } else if (newSession) {
+        setSession(newSession);
+      } else {
+        const mockSessionStr = localStorage.getItem('sb-mock-session');
+        if (mockSessionStr) {
+          try {
+            const mockSession = JSON.parse(mockSessionStr);
+            if (mockSession && mockSession.user) {
+              setSession(mockSession);
+            }
+          } catch {
+            setSession(null);
+          }
+        }
       }
-      setSession(newSession || (localStorage.getItem('sb-mock-session') ? JSON.parse(localStorage.getItem('sb-mock-session')!) : null));
       refreshStats();
     });
 
@@ -123,8 +142,27 @@ function App() {
 
   if (authLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f8fafc', color: '#4f46e5', fontWeight: 600 }}>
-        Loading POS Terminal...
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        width: '100%',
+        backgroundColor: '#f8fafc'
+      }}>
+        <style>{`
+          @keyframes spinLoader {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+        <div style={{
+          width: '36px',
+          height: '36px',
+          border: '3px solid #e2e8f0',
+          borderTopColor: '#0b2545',
+          borderRadius: '50%',
+          animation: 'spinLoader 0.7s linear infinite'
+        }} />
       </div>
     );
   }

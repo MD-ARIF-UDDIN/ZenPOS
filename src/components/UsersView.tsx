@@ -99,6 +99,18 @@ export const UsersView: React.FC = () => {
       return;
     }
 
+    // Check if phone already exists in list
+    const existing = users.find(u => {
+      const uPhone = cleanPhoneInput(u.phone || '');
+      const uEmailPhone = u.email ? cleanPhoneInput(u.email.split('@')[0]) : '';
+      return uPhone === cleanPhone || uEmailPhone === cleanPhone;
+    });
+
+    if (existing) {
+      showToast(`A staff member with phone "${cleanPhone}" already exists (${existing.full_name || 'Staff'}).`, 'warning');
+      return;
+    }
+
     setFormLoading(true);
     showToast('Registering staff user...', 'info');
 
@@ -139,12 +151,15 @@ export const UsersView: React.FC = () => {
       }
 
       // Save to dbService
-      await dbService.updateStaffProfile(userId, {
+      await dbService.createStaffUser({
+        id: userId,
         full_name: cleanFullName || 'Shop Staff',
         phone: cleanPhone,
+        email: syntheticEmail,
         role: role,
         permissions: selectedPermissions,
-        is_locked: false
+        is_locked: false,
+        password: cleanPassword
       });
 
       showToast(`Staff account created for ${cleanFullName} (${cleanPhone})!`, 'success');
@@ -155,7 +170,7 @@ export const UsersView: React.FC = () => {
       setShowPassword(false);
       setRole('cashier');
       setSelectedPermissions(DEFAULT_ROLE_PERMISSIONS.cashier);
-      loadUsers();
+      await loadUsers();
     } catch (err: any) {
       console.error('Failed to create staff account:', err);
       showToast(err.message || 'Failed to create staff account', 'error');

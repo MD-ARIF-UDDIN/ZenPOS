@@ -663,7 +663,6 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                             ? Number(item.variant.rent_price ?? item.variant.product?.rent_price ?? 0) 
                             : item.variant.selling_price;
                           const itemPrice = item.customPrice !== undefined ? item.customPrice : defaultPrice;
-                          const itemDiscount = Math.max(0, defaultPrice - itemPrice);
 
                           return (
                             <tr key={'sale_' + item.variant.id + (item.saleType || 'SALE') + idx}>

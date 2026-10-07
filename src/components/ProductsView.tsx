@@ -977,7 +977,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           color: finalColor,
           purchase_price: row.purchase_price || 0,
           selling_price: row.selling_price,
-          rent_price: isSherwani ? Number(row.rent_price) || 0 : (row.rent_price != null ? Number(row.rent_price) : null),
+          rent_price: (row.rent_price !== undefined && row.rent_price !== null) ? Number(row.rent_price) : 0,
           stock_quantity: Math.max(0, Number(row.stock_quantity) || 0),
           min_stock_level: row.min_stock_level || 5
         });
@@ -1056,7 +1056,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
         color: editColor.trim() || editVariantModal.color,
         purchase_price: Math.max(0, Number(editCostPrice) || 0),
         selling_price: Number(editSellPrice),
-        rent_price: isSherwani ? Number(editRentPrice) : (editRentPrice !== '' ? Number(editRentPrice) : null),
+        rent_price: (editRentPrice !== '' && editRentPrice !== null && editRentPrice !== undefined) ? Number(editRentPrice) : 0,
         stock_quantity: newStock,
         min_stock_level: Math.max(0, Number(editMinStock) || 0)
       });

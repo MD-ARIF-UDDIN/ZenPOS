@@ -57,8 +57,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
       await loadExpenses();
       onRefreshStats();
       showToast('Expense logged successfully!', 'success');
-    } catch (err) {
-      showToast('Error logging expense.', 'error');
+    } catch (err: any) {
+      console.error('Error logging expense:', err);
+      showToast(err?.message || 'Error logging expense.', 'error');
     } finally {
       setSaving(false);
     }
@@ -76,8 +77,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
           await loadExpenses();
           onRefreshStats();
           showToast('Expense record deleted.', 'success');
-        } catch (err) {
-          showToast('Error deleting expense', 'error');
+        } catch (err: any) {
+          console.error('Error deleting expense:', err);
+          showToast(err?.message || 'Error deleting expense', 'error');
         } finally {
           setDeletingId(null);
         }

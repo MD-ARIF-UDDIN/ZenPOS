@@ -106,6 +106,15 @@ CREATE TABLE IF NOT EXISTS public.stock_ledger (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS public.expenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category VARCHAR(100) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    description TEXT,
+    expense_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
@@ -116,6 +125,7 @@ ALTER TABLE public.purchase_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 
 -- 4. Create RLS Policies
 CREATE POLICY "Allow read for all authenticated/anon" ON public.users FOR ALL USING (true);
@@ -127,6 +137,7 @@ CREATE POLICY "Allow read for all authenticated/anon" ON public.purchase_items F
 CREATE POLICY "Allow read for all authenticated/anon" ON public.sales FOR ALL USING (true);
 CREATE POLICY "Allow read for all authenticated/anon" ON public.sale_items FOR ALL USING (true);
 CREATE POLICY "Allow read for all authenticated/anon" ON public.stock_ledger FOR ALL USING (true);
+CREATE POLICY "Allow read for all authenticated/anon" ON public.expenses FOR ALL USING (true);
 
 -- 5. Automatic Trigger: Sync Supabase Auth users to public.users profiles table
 CREATE OR REPLACE FUNCTION public.handle_new_user()
