@@ -8,8 +8,9 @@ import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { isAdminRole } from '../roleUtils';
 
 type DateFilter = 'today' | 'week' | 'month' | 'month_select' | 'custom' | 'all';
-type ReportType = 'BY_DATE' | 'BY_PRODUCT';
+type ReportType = 'BY_DATE' | 'BY_PRODUCT' | 'BY_CATEGORY';
 type ProductSortKey = 'sales' | 'profit' | 'units' | 'stock' | 'name';
+type CategorySortKey = 'sales' | 'profit' | 'units' | 'stock' | 'products' | 'name';
 
 interface ReportsViewProps {
   userRole?: string;
@@ -31,6 +32,25 @@ interface MotherProductStat {
   netSales: number;
   totalCogs: number;
   productProfit: number;
+  marginPct: number;
+  orderCount: number;
+}
+
+interface CategoryStat {
+  category: string;
+  productsCount: number;
+  variantsCount: number;
+  currentStock: number;
+  stockValuation: number;
+  unitsSold: number;
+  unitsReturned: number;
+  netUnitsSold: number;
+  grossSales: number;
+  discount: number;
+  refundAmount: number;
+  netSales: number;
+  totalCogs: number;
+  categoryProfit: number;
   marginPct: number;
   orderCount: number;
 }
@@ -57,6 +77,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   // Product report search & sorting
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [productSortBy, setProductSortBy] = useState<ProductSortKey>('sales');
+
+  // Category report search & sorting
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const [categorySortBy, setCategorySortBy] = useState<CategorySortKey>('sales');
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -448,6 +472,178 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     });
   }, [productStatsList, productSearchQuery, productSortBy]);
 
+  // ----------------------------------------------------
+  // 3. CATEGORY-WISE BREAKDOWN DATA
+  // ----------------------------------------------------
+  const categoryStatsList = useMemo(() => {
+    const categoryMap = new Map<string, CategoryStat & { orderSet: Set<string>; productSet: Set<string> }>();
+
+    // Step A: Calculate current stock, variants count, and unique products count for all categories in database
+    variants.forEach(v => {
+      const rawCat = v.product?.category?.trim();
+      const catName = rawCat && rawCat.length > 0 ? rawCat : 'Uncategorized';
+      const motherId = v.product_id || v.product?.id || `name_${v.product?.name || 'unknown'}`;
+
+      if (!categoryMap.has(catName)) {
+        categoryMap.set(catName, {
+          category: catName,
+          productsCount: 0,
+          variantsCount: 0,
+          currentStock: 0,
+          stockValuation: 0,
+          unitsSold: 0,
+          unitsReturned: 0,
+          netUnitsSold: 0,
+          grossSales: 0,
+          discount: 0,
+          refundAmount: 0,
+          netSales: 0,
+          totalCogs: 0,
+          categoryProfit: 0,
+          marginPct: 0,
+          orderCount: 0,
+          orderSet: new Set<string>(),
+          productSet: new Set<string>()
+        });
+      }
+
+      const entry = categoryMap.get(catName)!;
+      entry.variantsCount += 1;
+      const stock = Number(v.stock_quantity || 0);
+      const buyPrice = Number(v.purchase_price || 0);
+      entry.currentStock += stock;
+      entry.stockValuation += stock * buyPrice;
+      entry.productSet.add(motherId);
+    });
+
+    // Step B: Aggregate sold and returned items in the selected date range
+    filteredItems.forEach(si => {
+      const v = variantsMap.get(si.variant_id);
+      const rawCat = v?.product?.category?.trim();
+      const catName = rawCat && rawCat.length > 0 ? rawCat : 'Uncategorized';
+      const motherId = v?.product_id || v?.product?.id || `name_${v?.product?.name || 'unknown'}`;
+
+      if (!categoryMap.has(catName)) {
+        categoryMap.set(catName, {
+          category: catName,
+          productsCount: 0,
+          variantsCount: 0,
+          currentStock: 0,
+          stockValuation: 0,
+          unitsSold: 0,
+          unitsReturned: 0,
+          netUnitsSold: 0,
+          grossSales: 0,
+          discount: 0,
+          refundAmount: 0,
+          netSales: 0,
+          totalCogs: 0,
+          categoryProfit: 0,
+          marginPct: 0,
+          orderCount: 0,
+          orderSet: new Set<string>(),
+          productSet: new Set<string>()
+        });
+      }
+
+      const entry = categoryMap.get(catName)!;
+      if (motherId) {
+        entry.productSet.add(motherId);
+      }
+
+      const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+      const qty = Number(si.quantity || 0);
+      const unitPrice = Number(si.unit_price || 0);
+      const unitCost = Number(v?.purchase_price || 0);
+      const totalItemAmount = Math.abs(Number(si.total_price || (qty * unitPrice) || 0));
+
+      if (si.sale_id) {
+        entry.orderSet.add(si.sale_id);
+      }
+
+      if (isReturn) {
+        entry.unitsReturned += qty;
+        entry.refundAmount += totalItemAmount;
+        const profitImpact = qty * (unitPrice - unitCost);
+        entry.categoryProfit -= profitImpact;
+        entry.totalCogs -= qty * unitCost;
+      } else {
+        entry.unitsSold += qty;
+        entry.grossSales += totalItemAmount;
+        const profitImpact = qty * (unitPrice - unitCost);
+        entry.categoryProfit += profitImpact;
+        entry.totalCogs += qty * unitCost;
+
+        if (si.sale?.discount_amount && Number(si.sale?.total_amount || 0) > 0) {
+          const allocatedDiscount = (totalItemAmount / Number(si.sale.total_amount)) * Number(si.sale.discount_amount);
+          entry.discount += allocatedDiscount;
+        }
+      }
+    });
+
+    // Step C: Compute final net totals and margins
+    const list: CategoryStat[] = [];
+    categoryMap.forEach(item => {
+      item.productsCount = item.productSet.size;
+      item.netUnitsSold = item.unitsSold - item.unitsReturned;
+      item.netSales = item.grossSales - item.refundAmount;
+      item.orderCount = item.orderSet.size;
+      item.marginPct = item.netSales > 0 ? (item.categoryProfit / item.netSales) * 100 : 0;
+
+      // Only include if it has sales activity in selected range or if looking at All Time
+      if (item.unitsSold > 0 || item.unitsReturned > 0 || filter === 'all') {
+        list.push({
+          category: item.category,
+          productsCount: item.productsCount,
+          variantsCount: item.variantsCount,
+          currentStock: item.currentStock,
+          stockValuation: item.stockValuation,
+          unitsSold: item.unitsSold,
+          unitsReturned: item.unitsReturned,
+          netUnitsSold: item.netUnitsSold,
+          grossSales: item.grossSales,
+          discount: item.discount,
+          refundAmount: item.refundAmount,
+          netSales: item.netSales,
+          totalCogs: item.totalCogs,
+          categoryProfit: item.categoryProfit,
+          marginPct: item.marginPct,
+          orderCount: item.orderCount
+        });
+      }
+    });
+
+    return list;
+  }, [variants, filteredItems, variantsMap, filter]);
+
+  // Filtered & Sorted Category Stats
+  const filteredCategoryStats = useMemo(() => {
+    let result = categoryStatsList;
+    const q = categorySearchQuery.toLowerCase().trim();
+    if (q) {
+      result = result.filter(c => c.category.toLowerCase().includes(q));
+    }
+
+    return result.sort((a, b) => {
+      switch (categorySortBy) {
+        case 'sales':
+          return b.netSales - a.netSales;
+        case 'profit':
+          return b.categoryProfit - a.categoryProfit;
+        case 'units':
+          return b.netUnitsSold - a.netUnitsSold;
+        case 'products':
+          return b.productsCount - a.productsCount;
+        case 'stock':
+          return a.currentStock - b.currentStock;
+        case 'name':
+          return a.category.localeCompare(b.category);
+        default:
+          return b.netSales - a.netSales;
+      }
+    });
+  }, [categoryStatsList, categorySearchQuery, categorySortBy]);
+
   // PDF Export Handler
   const handleDownloadPdf = () => {
     const dateRangeLabel = filter === 'all' 
@@ -462,7 +658,37 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       ? `${startDate || 'Start'} to ${endDate || 'End'}` 
       : 'Today';
 
-    if (reportType === 'BY_PRODUCT') {
+    if (reportType === 'BY_CATEGORY') {
+      const totalUnitsSold = filteredCategoryStats.reduce((sum, c) => sum + c.netUnitsSold, 0);
+      const totalCatSales = filteredCategoryStats.reduce((sum, c) => sum + c.netSales, 0);
+      const totalCatDiscount = filteredCategoryStats.reduce((sum, c) => sum + c.discount, 0);
+      const totalCatProfit = filteredCategoryStats.reduce((sum, c) => sum + c.categoryProfit, 0);
+
+      exportTableToPdf({
+        moduleName: 'Reports (By Category)',
+        title: 'Category Sales Performance Report',
+        dateRange: dateRangeLabel,
+        summaryCards: [
+          { label: 'Categories', value: String(filteredCategoryStats.length) },
+          { label: 'Units Sold', value: `${totalUnitsSold} pcs` },
+          { label: 'Total Sales', value: `Tk ${formatAmount(totalCatSales)}` },
+          { label: 'Total Discount', value: `Tk ${formatAmount(totalCatDiscount)}` },
+          { label: 'Category Profit', value: `Tk ${formatAmount(totalCatProfit)}` },
+          { label: 'Net Profit', value: `Tk ${formatAmount(totalCatProfit)}` }
+        ],
+        columns: [
+          { header: 'Category Name', key: 'category' },
+          { header: 'Products', key: 'productsCount', align: 'center' },
+          { header: 'Orders', key: 'orderCount', align: 'center' },
+          { header: 'Units Sold', key: 'netUnitsSold', align: 'center' },
+          { header: 'Total Sales', key: 'netSales', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Discount', key: 'discount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Category Profit', key: 'categoryProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Net Profit', key: 'categoryProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
+        ],
+        data: filteredCategoryStats
+      });
+    } else if (reportType === 'BY_PRODUCT') {
       const totalUnitsSold = filteredProductStats.reduce((sum, p) => sum + p.netUnitsSold, 0);
       const totalProductSales = filteredProductStats.reduce((sum, p) => sum + p.netSales, 0);
       const totalProductDiscount = filteredProductStats.reduce((sum, p) => sum + p.discount, 0);
@@ -535,7 +761,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
               onClick={handleDownloadPdf}
               className="btn btn-secondary btn-sm"
               style={{ padding: '0 10px', height: '28px', fontSize: '11.5px', gap: '5px', fontWeight: 700 }}
-              title={`Download ${reportType === 'BY_PRODUCT' ? 'Product' : 'Date-wise'} PDF Report`}
+              title={`Download ${reportType === 'BY_CATEGORY' ? 'Category' : reportType === 'BY_PRODUCT' ? 'Product' : 'Date-wise'} PDF Report`}
             >
               <FileDown size={13} />
               <span>Download PDF</span>
@@ -779,7 +1005,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         </div>
       </div>
 
-      {/* Report Switcher Bar (By Date vs By Product) */}
+      {/* Report Switcher Bar (By Date vs By Product vs By Category) */}
       <div className="card" style={{ padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '3px', borderRadius: '6px' }}>
           <button
@@ -816,6 +1042,23 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           >
             By Product
           </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => { setReportType('BY_CATEGORY'); setCurrentPage(1); }}
+            style={{
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              border: 'none',
+              background: reportType === 'BY_CATEGORY' ? 'var(--color-primary)' : 'transparent',
+              color: reportType === 'BY_CATEGORY' ? '#fff' : 'var(--text-secondary)',
+              cursor: 'pointer'
+            }}
+          >
+            By Category
+          </button>
         </div>
 
         {reportType === 'BY_PRODUCT' && (
@@ -848,6 +1091,42 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                 <option value="units">Most Units Sold</option>
                 <option value="stock">Lowest Stock</option>
                 <option value="name">Product Name (A-Z)</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {reportType === 'BY_CATEGORY' && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', flex: '1 1 320px', justifyContent: 'flex-end' }}>
+            <div style={{ position: 'relative', minWidth: '220px', flex: '1 1 220px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Search category..."
+                value={categorySearchQuery}
+                onChange={(e) => {
+                  setCategorySearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ paddingLeft: '32px', height: '34px', fontSize: '12px', width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Sort:</span>
+              <select
+                className="form-control"
+                value={categorySortBy}
+                onChange={(e) => setCategorySortBy(e.target.value as CategorySortKey)}
+                style={{ height: '34px', fontSize: '11.5px', fontWeight: 600, width: 'auto', paddingRight: '24px' }}
+              >
+                <option value="sales">Highest Sales</option>
+                <option value="profit">Highest Profit</option>
+                <option value="units">Most Units Sold</option>
+                <option value="products">Most Products</option>
+                <option value="stock">Lowest Stock</option>
+                <option value="name">Category Name (A-Z)</option>
               </select>
             </div>
           </div>
@@ -1164,6 +1443,186 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
               <Pagination 
                 currentPage={currentPage}
                 totalItems={filteredProductStats.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* 3. BY CATEGORY PERFORMANCE BREAKDOWN TABLE */}
+      {/* ---------------------------------------------------------------- */}
+      {reportType === 'BY_CATEGORY' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>Category Sales & Profitability Breakdown</h3>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {filteredCategoryStats.length} categories
+            </span>
+          </div>
+
+          {filteredCategoryStats.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
+              No categories found matching your search or time range.
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div className="table-container reports-desktop-table">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
+                      <th>Category Name</th>
+                      <th style={{ textAlign: 'center' }}>Products</th>
+                      <th style={{ textAlign: 'center' }}>Stock</th>
+                      <th style={{ textAlign: 'center' }}>Orders</th>
+                      <th style={{ textAlign: 'center' }}>Units Sold</th>
+                      <th style={{ textAlign: 'right' }}>Total Sales</th>
+                      <th style={{ textAlign: 'right' }}>Discount</th>
+                      <th style={{ textAlign: 'right' }}>Category Profit</th>
+                      <th style={{ textAlign: 'right' }}>Net Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCategoryStats
+                      .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                      .map((cat, idx) => (
+                      <tr key={cat.category}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {(currentPage - 1) * pageSize + idx + 1}
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                          {cat.category}
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                          <span style={{ 
+                            background: '#f1f5f9', 
+                            color: '#475569', 
+                            padding: '2px 8px', 
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700
+                          }}>
+                            {cat.productsCount} products
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          {cat.currentStock} pcs
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                          {cat.orderCount}
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: cat.netUnitsSold > 0 ? 'var(--color-primary)' : 'var(--text-muted)' }}>
+                          {cat.netUnitsSold} pcs
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          ৳{formatAmount(cat.netSales)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: cat.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+                          {cat.discount > 0 ? `৳${formatAmount(cat.discount)}` : '-'}
+                        </td>
+                        <td style={{ 
+                          textAlign: 'right', 
+                          fontWeight: 700, 
+                          color: 'var(--color-info)' 
+                        }}>
+                          ৳{formatAmount(cat.categoryProfit)}
+                        </td>
+                        <td style={{ 
+                          textAlign: 'right', 
+                          fontWeight: 800, 
+                          color: cat.categoryProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' 
+                        }}>
+                          ৳{formatAmount(cat.categoryProfit)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card View for Categories */}
+              <div className="reports-mobile-cards">
+                {filteredCategoryStats
+                  .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                  .map((cat, idx) => (
+                  <div 
+                    key={cat.category}
+                    className="card"
+                    style={{
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginRight: '6px' }}>
+                          #{(currentPage - 1) * pageSize + idx + 1}
+                        </span>
+                        <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text-primary)' }}>
+                          {cat.category}
+                        </span>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>
+                          {cat.productsCount} products · {cat.currentStock} in stock
+                        </div>
+                      </div>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: 700, 
+                        background: 'var(--color-primary-light)', 
+                        color: 'var(--color-primary)', 
+                        padding: '2px 7px', 
+                        borderRadius: '4px' 
+                      }}>
+                        {cat.orderCount} orders · {cat.netUnitsSold} pcs
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px' }}>
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Sales</div>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>৳{formatAmount(cat.netSales)}</div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Discount</div>
+                        <div style={{ fontWeight: 700, color: cat.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+                          {cat.discount > 0 ? `৳${formatAmount(cat.discount)}` : '-'}
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Category Profit</div>
+                        <div style={{ fontWeight: 800, color: 'var(--color-info)' }}>৳{formatAmount(cat.categoryProfit)}</div>
+                      </div>
+
+                      <div style={{ 
+                        background: cat.categoryProfit >= 0 ? '#ecfdf5' : '#fef2f2', 
+                        padding: '6px 8px', 
+                        borderRadius: '4px',
+                        border: cat.categoryProfit >= 0 ? '1px solid #d1fae5' : '1px solid #fee2e2'
+                      }}>
+                        <div style={{ fontSize: '10px', color: cat.categoryProfit >= 0 ? '#065f46' : '#991b1b', fontWeight: 600 }}>Net Profit</div>
+                        <div style={{ fontWeight: 800, color: cat.categoryProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                          ৳{formatAmount(cat.categoryProfit)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Pagination 
+                currentPage={currentPage}
+                totalItems={filteredCategoryStats.length}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
                 onPageSizeChange={setPageSize}
