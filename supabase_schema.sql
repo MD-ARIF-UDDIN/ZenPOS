@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS public.sale_items (
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     total_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    sale_type VARCHAR(20) DEFAULT 'SALE' CHECK (sale_type IN ('SALE', 'RENT')),
+    sale_type VARCHAR(20) DEFAULT 'SALE' CHECK (sale_type IN ('SALE', 'RENT', 'RETURN')),
     return_date DATE DEFAULT NULL,
     is_returned BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
@@ -199,16 +199,24 @@ CREATE TRIGGER trg_after_purchase_item_insert
 AFTER INSERT ON public.purchase_items
 FOR EACH ROW EXECUTE FUNCTION public.after_purchase_item_insert();
 
--- When sale_items are added, decrease stock and add ledger entry
 CREATE OR REPLACE FUNCTION public.after_sale_item_insert()
 RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE public.product_variants
-    SET stock_quantity = stock_quantity - NEW.quantity
-    WHERE id = NEW.variant_id;
+    IF NEW.sale_type = 'RETURN' OR NEW.is_returned = true THEN
+        UPDATE public.product_variants
+        SET stock_quantity = stock_quantity + NEW.quantity
+        WHERE id = NEW.variant_id;
 
-    INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
-    VALUES (NEW.variant_id, 'SALE', -NEW.quantity, NEW.sale_id, 'Sale checked out');
+        INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
+        VALUES (NEW.variant_id, 'RETURN', NEW.quantity, NEW.sale_id, 'Product returned / refunded');
+    ELSE
+        UPDATE public.product_variants
+        SET stock_quantity = stock_quantity - NEW.quantity
+        WHERE id = NEW.variant_id;
+
+        INSERT INTO public.stock_ledger (variant_id, transaction_type, quantity_change, reference_id, notes)
+        VALUES (NEW.variant_id, 'SALE', -NEW.quantity, NEW.sale_id, 'Sale checked out');
+    END IF;
 
     RETURN NEW;
 END;

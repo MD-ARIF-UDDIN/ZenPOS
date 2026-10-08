@@ -290,7 +290,7 @@ export const dbService = {
     }
     let query = supabase
       .from('sales')
-      .select('*, sale_items(id, variant_id, quantity, unit_price, total_price, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
+      .select('*, sale_items(id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
       .order('sale_date', { ascending: false });
 
     if (limit) {

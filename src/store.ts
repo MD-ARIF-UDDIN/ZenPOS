@@ -149,11 +149,22 @@ interface ToastInfo {
   type: 'success' | 'error' | 'warning' | 'info';
 }
 
-interface ModalInfo {
+export interface ConfirmOptions {
+  confirmInputText?: string | string[];
+  confirmInputPlaceholder?: string;
+  confirmInputLabel?: string;
+  confirmButtonText?: string;
+}
+
+export interface ModalInfo {
   title: string;
   message: string;
   type: 'alert' | 'confirm';
-  onConfirm?: () => void;
+  confirmInputText?: string | string[];
+  confirmInputPlaceholder?: string;
+  confirmInputLabel?: string;
+  confirmButtonText?: string;
+  onConfirm?: () => void | Promise<void>;
   onCancel?: () => void;
 }
 
@@ -162,7 +173,13 @@ interface NotificationState {
   modal: ModalInfo | null;
   showToast: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
   removeToast: (id: string) => void;
-  showConfirm: (title: string, message: string, onConfirm: () => void, onCancel?: () => void) => void;
+  showConfirm: (
+    title: string,
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    onCancel?: () => void,
+    options?: ConfirmOptions
+  ) => void;
   showAlert: (title: string, message: string) => void;
   closeModal: () => void;
 }
@@ -180,8 +197,18 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   removeToast: (id) => set((state) => ({
     toasts: state.toasts.filter(t => t.id !== id)
   })),
-  showConfirm: (title, message, onConfirm, onCancel) => set({
-    modal: { title, message, type: 'confirm', onConfirm, onCancel }
+  showConfirm: (title, message, onConfirm, onCancel, options) => set({
+    modal: {
+      title,
+      message,
+      type: 'confirm',
+      onConfirm,
+      onCancel,
+      confirmInputText: options?.confirmInputText,
+      confirmInputPlaceholder: options?.confirmInputPlaceholder,
+      confirmInputLabel: options?.confirmInputLabel,
+      confirmButtonText: options?.confirmButtonText
+    }
   }),
   showAlert: (title, message) => set({
     modal: { title, message, type: 'alert' }

@@ -14,7 +14,7 @@ import { ExpensesView } from './components/ExpensesView';
 import { dbService } from './dbService';
 import { supabase } from './supabaseClient';
 import { useNotificationStore } from './store';
-import { RefreshCw, LogOut, User, Menu } from 'lucide-react';
+import { RefreshCw, LogOut, User, Menu, Loader2 } from 'lucide-react';
 import { isRestrictedStaffRole, formatRoleName, hasModuleAccess, DEFAULT_ROLE_PERMISSIONS } from './roleUtils';
 
 function App() {
@@ -25,7 +25,31 @@ function App() {
   const [lowStockCount, setLowStockCount] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [modalConfirmInput, setModalConfirmInput] = useState('');
+  const [modalSubmitting, setModalSubmitting] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    setModalConfirmInput('');
+    setModalSubmitting(false);
+  }, [modal]);
+
+  const isModalInputValid = () => {
+    if (!modal?.confirmInputText) return true;
+    const targets = Array.isArray(modal.confirmInputText)
+      ? modal.confirmInputText
+      : [modal.confirmInputText];
+    const val = modalConfirmInput.trim().toLowerCase();
+    const cleanVal = val.replace(/^#/, '');
+    return targets.some((target) => {
+      if (!target) return false;
+      const t = String(target).trim().toLowerCase();
+      const cleanT = t.replace(/^#/, '');
+      return val === t || cleanVal === cleanT;
+    });
+  };
+
+  const isModalConfirmed = isModalInputValid();
 
   const handleAuthSuccess = (activeSession: any) => {
     setSession(activeSession);
@@ -480,12 +504,80 @@ function App() {
                 {modal.message}
               </p>
             </div>
+
+            {modal.confirmInputText && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {modal.confirmInputLabel || (
+                    <span>
+                      Type <strong style={{ color: 'var(--color-danger, #ef4444)', fontFamily: 'monospace', fontSize: '14px', letterSpacing: '0.5px' }}>
+                        {Array.isArray(modal.confirmInputText) ? modal.confirmInputText[0] : modal.confirmInputText}
+                      </strong> to confirm:
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  autoFocus
+                  value={modalConfirmInput}
+                  onChange={(e) => setModalConfirmInput(e.target.value)}
+                  disabled={modalSubmitting}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && isModalConfirmed && !modalSubmitting) {
+                      if (modal.onConfirm) {
+                        try {
+                          setModalSubmitting(true);
+                          await modal.onConfirm();
+                        } finally {
+                          setModalSubmitting(false);
+                          closeModal();
+                        }
+                      } else {
+                        closeModal();
+                      }
+                    }
+                  }}
+                  placeholder={
+                    modal.confirmInputPlaceholder ||
+                    `Type ${Array.isArray(modal.confirmInputText) ? modal.confirmInputText[0] : modal.confirmInputText}`
+                  }
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: isModalConfirmed && modalConfirmInput.trim()
+                      ? '1.5px solid #10b981'
+                      : '1.5px solid var(--border-color, #e2e8f0)',
+                    backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    outline: 'none',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isModalConfirmed && modalConfirmInput.trim() ? '0 0 0 3px rgba(16, 185, 129, 0.15)' : 'none'
+                  }}
+                />
+                {modalConfirmInput.trim() && !isModalConfirmed && (
+                  <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 500 }}>
+                    Invoice number does not match. Please type accurately to confirm.
+                  </span>
+                )}
+                {isModalConfirmed && modalConfirmInput.trim() && (
+                  <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    ✓ Invoice number matched
+                  </span>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
               {modal.type === 'confirm' && (
                 <button 
                   className="btn btn-secondary" 
+                  disabled={modalSubmitting}
                   style={{ borderRadius: '10px', padding: '8px 16px', fontSize: '13px', fontWeight: 600 }}
                   onClick={() => {
+                    if (modalSubmitting) return;
                     if (modal.onCancel) modal.onCancel();
                     closeModal();
                   }}
@@ -495,6 +587,7 @@ function App() {
               )}
               <button 
                 className="btn btn-primary" 
+                disabled={Boolean(modal.confirmInputText && !isModalConfirmed) || modalSubmitting}
                 style={{
                   borderRadius: '10px', 
                   padding: '8px 16px', 
@@ -502,14 +595,41 @@ function App() {
                   fontWeight: 600,
                   backgroundColor: modal.title.toLowerCase().includes('delete') || modal.title.toLowerCase().includes('remove') ? 'var(--color-danger)' : 'var(--color-primary)',
                   borderColor: modal.title.toLowerCase().includes('delete') || modal.title.toLowerCase().includes('remove') ? 'var(--color-danger)' : 'var(--color-primary)',
-                  boxShadow: 'none'
+                  boxShadow: 'none',
+                  opacity: (modal.confirmInputText && !isModalConfirmed) || modalSubmitting ? 0.6 : 1,
+                  cursor: (modal.confirmInputText && !isModalConfirmed) || modalSubmitting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
-                onClick={() => {
-                  if (modal.onConfirm) modal.onConfirm();
-                  closeModal();
+                onClick={async () => {
+                  if (modal.confirmInputText && !isModalConfirmed) return;
+                  if (modalSubmitting) return;
+                  if (modal.onConfirm) {
+                    try {
+                      setModalSubmitting(true);
+                      await modal.onConfirm();
+                    } finally {
+                      setModalSubmitting(false);
+                      closeModal();
+                    }
+                  } else {
+                    closeModal();
+                  }
                 }}
               >
-                Confirm
+                {modalSubmitting ? (
+                  <>
+                    <Loader2 size={15} style={{ animation: 'spinLoader 0.7s linear infinite' }} />
+                    <span>
+                      {modal.title.toLowerCase().includes('delete') || modal.title.toLowerCase().includes('remove')
+                        ? 'Deleting...'
+                        : 'Processing...'}
+                    </span>
+                  </>
+                ) : (
+                  modal.confirmButtonText || 'Confirm'
+                )}
               </button>
             </div>
           </div>

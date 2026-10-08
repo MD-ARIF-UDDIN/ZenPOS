@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Search, Eye, RotateCcw, ArrowLeftRight, Trash2, ShoppingBag, DollarSign, FileDown } from 'lucide-react';
+import { Search, Eye, RotateCcw, ArrowLeftRight, Trash2, ShoppingBag, DollarSign, FileDown, Loader2 } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 import { exportTableToPdf } from '../utils/pdfExport';
@@ -21,6 +21,7 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
   const [filterType, setFilterType] = useState<'ALL' | 'PURE_RETURN' | 'EXCHANGE'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null);
 
   // Selected invoice modal state (View / Print)
   const [selectedSale, setSelectedSale] = useState<any | null>(null);
@@ -31,9 +32,9 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
     try {
       setLoading(true);
       const allSales = await dbService.getSales();
-      // Filter sales that have at least one returned item or a negative/zero net amount with return items
+      // Filter sales that have at least one returned item or a negative net amount (refund)
       const returnList = allSales.filter(s => {
-        return s.sale_items?.some((si: any) => si.sale_type === 'RETURN' || si.is_returned);
+        return s.sale_items?.some((si: any) => si.sale_type === 'RETURN' || si.is_returned || Number(si.total_price) < 0) || Number(s.payable_amount) < 0;
       });
       setSales(returnList);
     } catch (e) {
@@ -63,29 +64,48 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
   };
 
   const handleDeleteSale = (sale: any) => {
-    const code = sale.id.toUpperCase().substring(0, 8);
+    const code = sale.invoice_code || sale.id.toUpperCase().substring(0, 8);
+    const validCodes = [
+      code,
+      sale.invoice_code,
+      sale.id,
+      sale.id?.substring(0, 8),
+      sale.id?.toUpperCase().substring(0, 8)
+    ].filter(Boolean) as string[];
+
     showConfirm(
       'Delete Return / Exchange Invoice',
       `Are you sure you want to permanently delete Return Record #${code}?`,
       async () => {
         try {
+          setDeletingSaleId(sale.id);
           await dbService.deleteSale(sale.id);
           showToast(`Invoice #${code} deleted successfully!`, 'success');
-          loadReturnSales();
+          await loadReturnSales();
         } catch (err: any) {
           console.error('Failed to delete sale', err);
           showToast(err.message || 'Failed to delete return invoice', 'error');
+        } finally {
+          setDeletingSaleId(null);
         }
+      },
+      undefined,
+      {
+        confirmInputText: validCodes,
+        confirmInputPlaceholder: `Enter invoice #${code}`,
+        confirmInputLabel: `To confirm deletion, please type the invoice number (${code}):`,
+        confirmButtonText: 'Permanently Delete'
       }
     );
   };
 
   // Classify transactions
   const getSaleType = (s: any) => {
-    const returnItems = (s.sale_items || []).filter((si: any) => si.sale_type === 'RETURN' || si.is_returned);
-    const saleItems = (s.sale_items || []).filter((si: any) => si.sale_type !== 'RETURN' && !si.is_returned);
+    const returnItems = (s.sale_items || []).filter((si: any) => si.sale_type === 'RETURN' || si.is_returned || Number(si.total_price) < 0);
+    const saleItems = (s.sale_items || []).filter((si: any) => si.sale_type !== 'RETURN' && !si.is_returned && Number(si.total_price) >= 0);
     if (returnItems.length > 0 && saleItems.length === 0) return 'PURE_RETURN';
-    return 'EXCHANGE';
+    if (returnItems.length > 0 && saleItems.length > 0) return 'EXCHANGE';
+    return 'PURE_RETURN';
   };
 
   // Filtered dataset
@@ -481,11 +501,25 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
                           {!isRestricted && (
                             <button
                               className="btn btn-danger btn-sm"
+                              disabled={deletingSaleId === s.id}
                               onClick={() => handleDeleteSale(s)}
                               title="Delete Record"
-                              style={{ width: '26px', height: '26px', padding: 0 }}
+                              style={{
+                                width: '26px',
+                                height: '26px',
+                                padding: 0,
+                                opacity: deletingSaleId === s.id ? 0.6 : 1,
+                                cursor: deletingSaleId === s.id ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
                             >
-                              <Trash2 size={12} />
+                              {deletingSaleId === s.id ? (
+                                <Loader2 size={12} style={{ animation: 'spinLoader 0.7s linear infinite' }} />
+                              ) : (
+                                <Trash2 size={12} />
+                              )}
                             </button>
                           )}
                         </div>

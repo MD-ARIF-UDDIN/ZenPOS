@@ -8,6 +8,7 @@ import { EditSaleModal } from './EditSaleModal';
 import { exportTableToPdf } from '../utils/pdfExport';
 import { formatDateDDMMYYYY, formatTimeAMPM, formatAmount } from '../utils/dateUtils';
 import { isAdminRole } from '../roleUtils';
+import { Loader2 } from 'lucide-react';
 
 interface SalesListViewProps {
   isRestricted?: boolean;
@@ -19,9 +20,10 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterTab, setFilterTab] = useState<'ALL' | 'SALES' | 'RETURNS'>('ALL');
+  const [filterTab, setFilterTab] = useState<'ALL' | 'SALES' | 'RETURNS'>('SALES');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null);
   
   // Selected sale details modal state (View / Print)
   const [selectedSale, setSelectedSale] = useState<any | null>(null);
@@ -79,18 +81,36 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
 
   const handleDeleteSale = (sale: any) => {
     const code = sale.invoice_code || sale.id.toUpperCase().substring(0, 8);
+    const validCodes = [
+      code,
+      sale.invoice_code,
+      sale.id,
+      sale.id?.substring(0, 8),
+      sale.id?.toUpperCase().substring(0, 8)
+    ].filter(Boolean) as string[];
+
     showConfirm(
       'Delete Sale Invoice',
       `Are you sure you want to permanently delete Invoice #${code}? All sold products in this invoice will be automatically returned to inventory stock.`,
       async () => {
         try {
+          setDeletingSaleId(sale.id);
           await dbService.deleteSale(sale.id);
           showToast(`Invoice #${code} deleted and products restocked successfully!`, 'success');
-          loadSales();
+          await loadSales();
         } catch (err: any) {
           console.error('Failed to delete sale', err);
           showToast(err.message || 'Failed to delete sale invoice', 'error');
+        } finally {
+          setDeletingSaleId(null);
         }
+      },
+      undefined,
+      {
+        confirmInputText: validCodes,
+        confirmInputPlaceholder: `Enter invoice #${code}`,
+        confirmInputLabel: `To confirm deletion, please type the invoice number (${code}):`,
+        confirmButtonText: 'Permanently Delete'
       }
     );
   };
@@ -98,7 +118,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
   // Filter sales
   const baseSales = isRestricted ? sales.slice(0, 5) : sales;
   const filteredSales = baseSales.filter(s => {
-    const hasReturn = s.sale_items?.some((si: any) => si.sale_type === 'RETURN' || si.is_returned);
+    const hasReturn = s.sale_items?.some((si: any) => si.sale_type === 'RETURN' || si.is_returned || Number(si.total_price) < 0) || Number(s.payable_amount) < 0;
     if (filterTab === 'RETURNS' && !hasReturn) return false;
     if (filterTab === 'SALES' && hasReturn) return false;
 
@@ -433,6 +453,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
 
                         <button
                           className="btn btn-sm"
+                          disabled={deletingSaleId === s.id}
                           style={{
                             padding: '0 6px',
                             fontSize: '11.5px',
@@ -440,11 +461,24 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                             backgroundColor: '#fee2e2',
                             color: 'var(--color-danger)',
                             border: '1px solid #fecaca',
+                            opacity: deletingSaleId === s.id ? 0.6 : 1,
+                            cursor: deletingSaleId === s.id ? 'not-allowed' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
                           }}
                           onClick={() => handleDeleteSale(s)}
                           title="Delete Invoice and Restock Items"
                         >
-                          <Trash2 size={12} style={{ marginRight: '2px' }} /> Delete
+                          {deletingSaleId === s.id ? (
+                            <>
+                              <Loader2 size={12} style={{ animation: 'spinLoader 0.7s linear infinite' }} /> Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 size={12} /> Delete
+                            </>
+                          )}
                         </button>
                       </div>
                     </td>
