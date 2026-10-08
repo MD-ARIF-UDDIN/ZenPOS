@@ -35,15 +35,15 @@ export interface InvoiceData {
 }
 
 export interface InvoicePrintSettings {
-  paperWidth: number; // physical paper roll width in mm (58mm)
-  contentWidth: number; // printable width in mm (default 52mm for 58mm printer)
-  sideMargin: number; // in mm: equal left and right margin padding (default 1.0mm)
-  leftShift: number; // in mm: balance nudge left/right (-5mm to +5mm, default 0 for true center)
+  paperWidth: number; // physical paper roll width in mm (80mm standard or 58mm mini)
+  contentWidth: number; // printable width in mm
+  sideMargin: number; // in mm: equal left and right margin padding (default 2.5mm for 80mm, 1.0mm for 58mm)
+  leftShift: number; // in mm: balance nudge left/right (-6mm to +6mm, default 0 for true center)
   verticalOffset: number; // in mm: top margin / feed (default 2mm)
-  fontScale: number; // in % (default 105%)
-  itemSpacing: number; // in mm (default 0.5mm)
+  fontScale: number; // in % (default 108%)
+  itemSpacing: number; // in mm (default 1.5mm)
   showLogo: boolean;
-  logoSize: number; // in px: width of logo (default 155px for full sharp banner)
+  logoSize: number; // in px: width of logo (default 185px for 80mm, 155px for 58mm)
   logoThreshold: number; // 120-240: threshold to convert logo to pure thermal black & white
   showStoreHeader: boolean;
   storeName: string;
@@ -59,15 +59,15 @@ export interface InvoicePrintSettings {
 }
 
 const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
-  paperWidth: 58,
-  contentWidth: 52,
-  sideMargin: 1.0,
+  paperWidth: 80, // Default to 80mm (Standard POS printer)
+  contentWidth: 72,
+  sideMargin: 2.5,
   leftShift: 0,
   verticalOffset: 2.0, // 2mm top feed
-  fontScale: 105,
-  itemSpacing: 1.2, // Clean 1.2mm gap between product items
+  fontScale: 108,
+  itemSpacing: 1.5, // Clean gap between product items
   showLogo: true,
-  logoSize: 155, // 155px width makes the full brand logo prominent & sharp
+  logoSize: 185, // 185px width for crisp banner on 80mm roll
   logoThreshold: 210, // Removes cream background noise
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
@@ -82,7 +82,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   footerText: 'Thank you for your shopping!'
 };
 
-const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v17';
+const STORAGE_KEY = 'pos_invoice_print_settings_v18';
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
@@ -164,15 +164,24 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_INVOICE_SETTINGS));
   };
 
+  const switchPaperWidth = (width: 80 | 58) => {
+    if (width === 80) {
+      updateSettings({ paperWidth: 80, contentWidth: 72, sideMargin: 2.5, leftShift: 0, logoSize: 185, fontScale: 108 });
+    } else {
+      updateSettings({ paperWidth: 58, contentWidth: 52, sideMargin: 1.0, leftShift: 0, logoSize: 155, fontScale: 105 });
+    }
+  };
+
   const applyPreset = (preset: 'centered' | 'fullwidth' | 'nudgeRight' | 'nudgeLeft') => {
+    const is80 = (settings.paperWidth || 80) === 80;
     if (preset === 'centered') {
-      updateSettings({ sideMargin: 1.0, leftShift: 0, verticalOffset: 2.0, logoSize: 155 });
+      updateSettings({ sideMargin: is80 ? 2.5 : 1.0, leftShift: 0, verticalOffset: 2.0, logoSize: is80 ? 185 : 155 });
     } else if (preset === 'fullwidth') {
-      updateSettings({ sideMargin: 0.5, leftShift: 0, verticalOffset: 1.5, logoSize: 165 });
+      updateSettings({ sideMargin: is80 ? 1.0 : 0.5, leftShift: 0, verticalOffset: 1.5, logoSize: is80 ? 200 : 165 });
     } else if (preset === 'nudgeRight') {
-      updateSettings({ sideMargin: 1.0, leftShift: 2.0, verticalOffset: 2.0, logoSize: 155 });
+      updateSettings({ leftShift: 2.5, verticalOffset: 2.0 });
     } else if (preset === 'nudgeLeft') {
-      updateSettings({ sideMargin: 1.0, leftShift: -2.0, verticalOffset: 2.0, logoSize: 155 });
+      updateSettings({ leftShift: -2.5, verticalOffset: 2.0 });
     }
   };
 
@@ -552,13 +561,49 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eef2f6', paddingBottom: '10px', marginBottom: '8px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Sales Invoice Print (Rongta 58mm Thermal)
+              Sales Invoice Print ({settings.paperWidth || 80}mm POS Thermal)
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              Precise Paper Centering &amp; High-Contrast Thermal Logo Engine
+              Precise Paper Centering &amp; Full Width Auto-Fitting
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Paper Size Switcher */}
+            <div style={{ display: 'flex', background: '#e2e8f0', padding: '2px', borderRadius: '5px', border: '1px solid #cbd5e1' }}>
+              <button
+                type="button"
+                onClick={() => switchPaperWidth(80)}
+                style={{
+                  padding: '3px 9px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  borderRadius: '3px',
+                  border: 'none',
+                  backgroundColor: (settings.paperWidth || 80) === 80 ? '#2563eb' : 'transparent',
+                  color: (settings.paperWidth || 80) === 80 ? '#ffffff' : '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                🖨️ 80mm (Standard)
+              </button>
+              <button
+                type="button"
+                onClick={() => switchPaperWidth(58)}
+                style={{
+                  padding: '3px 9px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  borderRadius: '3px',
+                  border: 'none',
+                  backgroundColor: settings.paperWidth === 58 ? '#2563eb' : 'transparent',
+                  color: settings.paperWidth === 58 ? '#ffffff' : '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                58mm (Mini)
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => setShowTuning(!showTuning)}
@@ -576,7 +621,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 gap: '4px'
               }}
             >
-              <Sliders size={12} /> {showTuning ? 'Hide Controls' : 'Print Alignment & Logo'}
+              <Sliders size={12} /> {showTuning ? 'Hide Controls' : 'Print Tuning'}
             </button>
             <button 
               onClick={onClose} 
@@ -602,7 +647,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         }}>
           <AlertCircle size={14} style={{ flexShrink: 0 }} />
           <span>
-            <strong>Rongta 58mm Tip:</strong> In the browser print dialog, select <strong>Paper: 58mm</strong> and <strong>Margins: None (0)</strong>. Use the <strong>"Push Right"</strong> buttons below if your printer prints too close to the left edge.
+            <strong>Printing Tip:</strong> In the browser print dialog (Ctrl+P), select <strong>Paper Size: {(settings.paperWidth || 80) === 80 ? '80mm (or 80 x 297mm / 3 inch roll)' : '58mm roll'}</strong> and <strong>Margins: None (0)</strong>.
           </span>
         </div>
 
@@ -1005,7 +1050,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           </div>
         )}
 
-        {/* Live Preview of 58mm Thermal Receipt */}
+        {/* Live Preview of POS Thermal Receipt */}
         <div style={{
           flex: 1,
           maxHeight: '430px',
@@ -1019,14 +1064,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           alignItems: 'center',
           justifyContent: 'flex-start'
         }}>
-          {/* Label indicating physical 58mm roll boundary */}
+          {/* Label indicating physical roll boundary */}
           <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
-            58mm Physical Paper Roll (Left Margin: <strong>{padLeft.toFixed(1)}mm</strong> | Right Margin: <strong>{padRight.toFixed(1)}mm</strong>)
+            {settings.paperWidth || 80}mm Physical Paper Roll (Left Margin: <strong>{padLeft.toFixed(1)}mm</strong> | Right Margin: <strong>{padRight.toFixed(1)}mm</strong>)
           </div>
 
-          {/* Outer roll wrapper — exactly 232px simulates 58mm roll width (4px/mm) */}
+          {/* Outer roll wrapper — 320px for 80mm roll, 232px for 58mm roll (4px/mm) */}
           <div style={{
-            width: '232px',
+            width: (settings.paperWidth || 80) === 80 ? '320px' : '232px',
             flexShrink: 0,
             backgroundColor: '#e2e8f0',
             border: '2px solid #94a3b8',
@@ -1035,7 +1080,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             paddingBottom: '16px',
             paddingLeft: `${padLeft * 4}px`,
             paddingRight: `${padRight * 4}px`,
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            transition: 'width 0.2s ease'
           }}>
             {/* Simulated content area */}
             <div style={{
