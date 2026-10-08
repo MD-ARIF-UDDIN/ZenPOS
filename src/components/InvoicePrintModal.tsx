@@ -63,11 +63,11 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   contentWidth: 72,
   sideMargin: 2.5,
   leftShift: 0,
-  verticalOffset: 2.0, // 2mm top feed
+  verticalOffset: 0.8, // Compact 0.8mm top margin
   fontScale: 108,
-  itemSpacing: 1.5, // Clean gap between product items
+  itemSpacing: 1.5,
   showLogo: true,
-  logoSize: 185, // 185px width for crisp banner on 80mm roll
+  logoSize: 120, // Compact neat logo width
   logoThreshold: 210, // Removes cream background noise
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
@@ -82,7 +82,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   footerText: 'Thank you for your shopping!'
 };
 
-const STORAGE_KEY = 'pos_invoice_print_settings_v18';
+const STORAGE_KEY = 'pos_invoice_print_settings_v19';
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
@@ -126,21 +126,48 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const d = imgData.data;
         const threshold = settings.logoThreshold || 210;
-        for (let i = 0; i < d.length; i += 4) {
-          const gray = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-          if (gray < threshold) {
-            d[i] = 0;
-            d[i + 1] = 0;
-            d[i + 2] = 0;
-            d[i + 3] = 255;
-          } else {
-            d[i] = 255;
-            d[i + 1] = 255;
-            d[i + 2] = 255;
-            d[i + 3] = 0; // Pure transparent white
+        let top = canvas.height, bottom = 0, left = canvas.width, right = 0;
+        let hasBlack = false;
+
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const idx = (y * canvas.width + x) * 4;
+            const gray = d[idx] * 0.299 + d[idx + 1] * 0.587 + d[idx + 2] * 0.114;
+            if (gray < threshold) {
+              d[idx] = 0;
+              d[idx + 1] = 0;
+              d[idx + 2] = 0;
+              d[idx + 3] = 255;
+              if (y < top) top = y;
+              if (y > bottom) bottom = y;
+              if (x < left) left = x;
+              if (x > right) right = x;
+              hasBlack = true;
+            } else {
+              d[idx] = 255;
+              d[idx + 1] = 255;
+              d[idx + 2] = 255;
+              d[idx + 3] = 0; // Pure transparent white
+            }
           }
         }
         ctx.putImageData(imgData, 0, 0);
+
+        // Autocrop transparent/white empty outer border for zero wasted vertical gap
+        if (hasBlack && bottom > top && right > left) {
+          const cropCanvas = document.createElement('canvas');
+          const pad = 1;
+          const cropW = (right - left + 1) + pad * 2;
+          const cropH = (bottom - top + 1) + pad * 2;
+          cropCanvas.width = cropW;
+          cropCanvas.height = cropH;
+          const cropCtx = cropCanvas.getContext('2d');
+          if (cropCtx) {
+            cropCtx.drawImage(canvas, left - pad, top - pad, cropW, cropH, 0, 0, cropW, cropH);
+            setMonochromeLogo(cropCanvas.toDataURL('image/png'));
+            return;
+          }
+        }
         setMonochromeLogo(canvas.toDataURL('image/png'));
       } catch (err) {
         console.warn('Monochrome conversion fallback:', err);
@@ -166,35 +193,35 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
 
   const switchPaperWidth = (width: 80 | 58) => {
     if (width === 80) {
-      updateSettings({ paperWidth: 80, contentWidth: 72, sideMargin: 2.5, leftShift: 0, logoSize: 185, fontScale: 108 });
+      updateSettings({ paperWidth: 80, contentWidth: 72, sideMargin: 2.5, leftShift: 0, logoSize: 120, fontScale: 108, verticalOffset: 0.8 });
     } else {
-      updateSettings({ paperWidth: 58, contentWidth: 52, sideMargin: 1.0, leftShift: 0, logoSize: 155, fontScale: 105 });
+      updateSettings({ paperWidth: 58, contentWidth: 52, sideMargin: 1.0, leftShift: 0, logoSize: 105, fontScale: 105, verticalOffset: 0.8 });
     }
   };
 
   const applyPreset = (preset: 'centered' | 'fullwidth' | 'nudgeRight' | 'nudgeLeft') => {
     const is80 = (settings.paperWidth || 80) === 80;
     if (preset === 'centered') {
-      updateSettings({ sideMargin: is80 ? 2.5 : 1.0, leftShift: 0, verticalOffset: 2.0, logoSize: is80 ? 185 : 155 });
+      updateSettings({ sideMargin: is80 ? 2.5 : 1.0, leftShift: 0, verticalOffset: 0.8, logoSize: is80 ? 120 : 105 });
     } else if (preset === 'fullwidth') {
-      updateSettings({ sideMargin: is80 ? 1.0 : 0.5, leftShift: 0, verticalOffset: 1.5, logoSize: is80 ? 200 : 165 });
+      updateSettings({ sideMargin: is80 ? 1.0 : 0.5, leftShift: 0, verticalOffset: 0.5, logoSize: is80 ? 135 : 115 });
     } else if (preset === 'nudgeRight') {
-      updateSettings({ leftShift: 2.5, verticalOffset: 2.0 });
+      updateSettings({ leftShift: 2.5, verticalOffset: 0.8 });
     } else if (preset === 'nudgeLeft') {
-      updateSettings({ leftShift: -2.5, verticalOffset: 2.0 });
+      updateSettings({ leftShift: -2.5, verticalOffset: 0.8 });
     }
   };
 
-  const scale = (settings.fontScale || 105) / 100;
+  const scale = (settings.fontScale || 108) / 100;
   const baseFontSize = 11.5 * scale;
   const titleFontSize = 15.5 * scale;
   const totalFontSize = 14.5 * scale;
-  const sideMargin = typeof settings.sideMargin === 'number' ? settings.sideMargin : 1.0;
+  const sideMargin = typeof settings.sideMargin === 'number' ? settings.sideMargin : 2.5;
   const leftShift = typeof settings.leftShift === 'number' ? settings.leftShift : 0;
   const padLeft = Math.max(0, sideMargin + leftShift);
   const padRight = Math.max(0, sideMargin - leftShift);
-  const vOffset = Math.max(0, settings.verticalOffset ?? 2.0);
-  const logoSize = Math.max(40, settings.logoSize || 155);
+  const vOffset = Math.max(0, settings.verticalOffset ?? 0.8);
+  const logoSize = Math.max(40, settings.logoSize || 120);
 
   const handlePrint = () => {
     let iframe = document.getElementById('invoice-isolated-print-frame') as HTMLIFrameElement;
@@ -312,8 +339,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             .store-header {
               text-align: center !important;
               border-bottom: 2px dashed #000000 !important;
-              padding-bottom: 1.5mm !important;
-              margin-bottom: 1.5mm !important;
+              padding-bottom: 0.8mm !important;
+              margin-bottom: 0.8mm !important;
             }
             .store-logo {
               width: ${logoSize}px !important;
@@ -321,7 +348,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               height: auto !important;
               object-fit: contain !important;
               display: block !important;
-              margin: 0 auto 1.5mm auto !important;
+              margin: 0 auto 0.4mm auto !important;
               image-rendering: -webkit-optimize-contrast !important;
               image-rendering: crisp-edges !important;
             }
@@ -446,9 +473,10 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             <div class="receipt-container">
               ${settings.showStoreHeader ? `
                 <div class="store-header">
-                  ${settings.showLogo ? `<img src="${activeLogoSrc}" class="store-logo" alt="Logo" />` : ''}
-                  <div class="store-title">${settings.storeName || 'RAJMAHAL'}</div>
-                  ${settings.storeSubtitle ? `<div class="store-sub">${settings.storeSubtitle}</div>` : ''}
+                  ${settings.showLogo ? `<img src="${activeLogoSrc}" class="store-logo" alt="Logo" />` : `
+                    <div class="store-title">${settings.storeName || 'RAJMAHAL'}</div>
+                    ${settings.storeSubtitle ? `<div class="store-sub">${settings.storeSubtitle}</div>` : ''}
+                  `}
                   ${settings.storeAddress ? `<div class="store-contact">${settings.storeAddress}</div>` : ''}
                   ${settings.storePhone ? `<div class="store-contact">Phone: ${settings.storePhone}</div>` : ''}
                 </div>
@@ -1103,7 +1131,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               {/* Store Header */}
               {settings.showStoreHeader && (
                 <div style={{ textAlign: 'center', borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px' }}>
-                  {settings.showLogo && (
+                  {settings.showLogo ? (
                     <img 
                       src={monochromeLogo || logoImg} 
                       alt="Logo" 
@@ -1116,10 +1144,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                         margin: '0 auto 4px auto' 
                       }} 
                     />
-                  )}
-                  <div style={{ fontSize: `${titleFontSize}px`, fontWeight: 900, textTransform: 'uppercase', color: '#000000' }}>{settings.storeName || 'RAJMAHAL'}</div>
-                  {settings.storeSubtitle && (
-                    <div style={{ fontSize: `${baseFontSize * 0.85}px`, fontWeight: 800, textTransform: 'uppercase', color: '#000000' }}>{settings.storeSubtitle}</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: `${titleFontSize}px`, fontWeight: 900, textTransform: 'uppercase', color: '#000000' }}>{settings.storeName || 'RAJMAHAL'}</div>
+                      {settings.storeSubtitle && (
+                        <div style={{ fontSize: `${baseFontSize * 0.85}px`, fontWeight: 800, textTransform: 'uppercase', color: '#000000' }}>{settings.storeSubtitle}</div>
+                      )}
+                    </>
                   )}
                   {settings.storeAddress && (
                     <div style={{ fontSize: `${baseFontSize * 0.82}px`, fontWeight: 700, color: '#000000' }}>{settings.storeAddress}</div>
