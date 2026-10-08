@@ -640,29 +640,36 @@ export const dbService = {
     const [variants, sales, { data: saleItems }] = await Promise.all([
       this.getVariants(),
       this.getSales(),
-      supabase.from('sale_items').select('quantity, unit_price, variant_id')
+      supabase.from('sale_items').select('quantity, unit_price, variant_id, sale_type')
     ]);
     
-    // Total Revenue
+    // Total Revenue (Payable, Paid, Due & Discount)
     const revenue = sales.reduce((acc: number, s: any) => acc + Number(s.payable_amount || 0), 0);
+    const totalDiscount = sales.reduce((acc: number, s: any) => acc + Number(s.discount_amount || 0), 0);
+    const totalPaid = sales.reduce((acc: number, s: any) => acc + Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : s.payable_amount || 0), 0);
+    const totalDue = Math.max(0, revenue - totalPaid);
     
-    // Total profit
-    let profit = 0;
+    // Total COGS (Rentals have 0 cost)
+    let totalCogs = 0;
     if (saleItems) {
       const variantMap = new Map(variants.map(v => [v.id, v]));
       saleItems.forEach((si: any) => {
+        const isRent = si.sale_type === 'RENT';
         const v = variantMap.get(si.variant_id);
-        if (v) {
-          profit += (si.quantity * (si.unit_price - v.purchase_price));
-        }
+        const unitCost = isRent ? 0 : Number(v?.purchase_price || 0);
+        totalCogs += (Number(si.quantity || 0) * unitCost);
       });
     }
+    const profit = totalPaid - totalCogs;
 
     // Low Stock Alert Count
     const lowStockCount = variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
 
     return {
       totalRevenue: revenue,
+      totalPaid,
+      totalDue,
+      totalDiscount,
       totalProfit: profit,
       totalSalesCount: sales.length,
       lowStockAlerts: lowStockCount,

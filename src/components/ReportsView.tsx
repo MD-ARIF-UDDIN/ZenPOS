@@ -30,6 +30,9 @@ interface MotherProductStat {
   discount: number;
   refundAmount: number;
   netSales: number;
+  payable: number;
+  paidAmount: number;
+  dueAmount: number;
   totalCogs: number;
   productProfit: number;
   marginPct: number;
@@ -49,6 +52,9 @@ interface CategoryStat {
   discount: number;
   refundAmount: number;
   netSales: number;
+  payable: number;
+  paidAmount: number;
+  dueAmount: number;
   totalCogs: number;
   categoryProfit: number;
   marginPct: number;
@@ -163,31 +169,34 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   const variantsMap = useMemo(() => new Map(variants.map(v => [v.id, v])), [variants]);
 
   // Overall Business KPIs
-  const totalRevenue = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.payable_amount || 0), 0), [filteredSales]);
+  const totalGrossSales = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.total_amount || s.payable_amount || 0), 0), [filteredSales]);
   const totalDiscount = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.discount_amount || 0), 0), [filteredSales]);
+  const totalPayable = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.payable_amount || 0), 0), [filteredSales]);
+  const totalPaid = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : s.payable_amount || 0), 0), [filteredSales]);
+  const totalDue = useMemo(() => Math.max(0, totalPayable - totalPaid), [totalPayable, totalPaid]);
   
-  let totalProfit = 0; // Gross profit (Revenue - COGS)
+  let totalCogs = 0;
   let totalRefunds = 0;
   let totalReturnedUnits = 0;
 
   filteredItems.forEach(si => {
     const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+    const isRent = si.sale_type === 'RENT';
     const v = variantsMap.get(si.variant_id);
+    const unitCost = isRent ? 0 : Number(v?.purchase_price || 0);
+    const qty = Number(si.quantity || 0);
+
     if (isReturn) {
-      totalRefunds += Math.abs(Number(si.total_price || (si.quantity * si.unit_price) || 0));
-      totalReturnedUnits += Number(si.quantity || 0);
-      if (v) {
-        const profitLoss = Number(si.quantity || 0) * (Number(si.unit_price || 0) - Number(v.purchase_price || 0));
-        totalProfit -= profitLoss;
-      }
+      totalRefunds += Math.abs(Number(si.total_price || (qty * Number(si.unit_price || 0)) || 0));
+      totalReturnedUnits += qty;
+      totalCogs -= qty * unitCost;
     } else {
-      if (v) {
-        const profitGain = Number(si.quantity || 0) * (Number(si.unit_price || 0) - Number(v.purchase_price || 0));
-        totalProfit += profitGain;
-      }
+      totalCogs += qty * unitCost;
     }
   });
 
+  // Realized Product Profit is calculated based on actual cash collected (Paid amount minus COGS of sold items; Rentals cost 0)
+  const totalProfit = totalPaid - totalCogs;
   const totalExpenses = useMemo(() => filteredExpenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0), [filteredExpenses]);
   const totalStockUnits = useMemo(() => variants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0), [variants]);
   const totalStockValuation = useMemo(() => variants.reduce((acc, v) => acc + ((v.stock_quantity || 0) * (v.purchase_price || 0)), 0), [variants]);
@@ -232,8 +241,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         dateKey: string;
         orderCount: number;
         unitsSold: number;
-        revenue: number;
+        grossSales: number;
         discount: number;
+        payable: number;
+        paidAmount: number;
+        dueAmount: number;
+        totalCogs: number;
         productProfit: number;
         expenses: number;
         netProfit: number;
@@ -246,8 +259,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           dateKey,
           orderCount: 0,
           unitsSold: 0,
-          revenue: 0,
+          grossSales: 0,
           discount: 0,
+          payable: 0,
+          paidAmount: 0,
+          dueAmount: 0,
+          totalCogs: 0,
           productProfit: 0,
           expenses: 0,
           netProfit: 0
@@ -260,9 +277,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const key = getDateKey(s.sale_date);
       if (!key) return;
       const stat = getOrCreateDateStat(key);
+      const payable = Number(s.payable_amount || 0);
+      const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : s.payable_amount || 0);
       stat.orderCount += 1;
-      stat.revenue += Number(s.payable_amount || 0);
+      stat.grossSales += Number(s.total_amount || s.payable_amount || 0);
       stat.discount += Number(s.discount_amount || 0);
+      stat.payable += payable;
+      stat.paidAmount += paid;
+      stat.dueAmount += Math.max(0, payable - paid);
     });
 
     filteredItems.forEach(si => {
@@ -271,21 +293,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       if (!key) return;
       const stat = getOrCreateDateStat(key);
       const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+      const isRent = si.sale_type === 'RENT';
+      const v = variantsMap.get(si.variant_id);
+      const unitCost = isRent ? 0 : Number(v?.purchase_price || 0);
+      const qty = Number(si.quantity || 0);
 
       if (isReturn) {
-        stat.unitsSold -= Number(si.quantity || 0);
+        stat.unitsSold -= qty;
+        stat.totalCogs -= qty * unitCost;
       } else {
-        stat.unitsSold += Number(si.quantity || 0);
-      }
-
-      const v = variantsMap.get(si.variant_id);
-      if (v) {
-        const profitVal = Number(si.quantity || 0) * (Number(si.unit_price || 0) - Number(v.purchase_price || 0));
-        if (isReturn) {
-          stat.productProfit -= profitVal;
-        } else {
-          stat.productProfit += profitVal;
-        }
+        stat.unitsSold += qty;
+        stat.totalCogs += qty * unitCost;
       }
     });
 
@@ -297,6 +315,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     });
 
     Object.values(dateStatsMap).forEach(stat => {
+      stat.productProfit = stat.paidAmount - stat.totalCogs;
       stat.netProfit = stat.productProfit - stat.expenses;
     });
 
@@ -332,6 +351,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: 0,
           refundAmount: 0,
           netSales: 0,
+          payable: 0,
+          paidAmount: 0,
+          dueAmount: 0,
           totalCogs: 0,
           productProfit: 0,
           marginPct: 0,
@@ -368,6 +390,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: 0,
           refundAmount: 0,
           netSales: 0,
+          payable: 0,
+          paidAmount: 0,
+          dueAmount: 0,
           totalCogs: 0,
           productProfit: 0,
           marginPct: 0,
@@ -378,9 +403,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
 
       const entry = motherProductMap.get(motherId)!;
       const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+      const isRent = si.sale_type === 'RENT';
       const qty = Number(si.quantity || 0);
       const unitPrice = Number(si.unit_price || 0);
-      const unitCost = Number(v?.purchase_price || 0);
+      const unitCost = isRent ? 0 : Number(v?.purchase_price || 0);
       const totalItemAmount = Math.abs(Number(si.total_price || (qty * unitPrice) || 0));
 
       if (si.sale_id) {
@@ -390,20 +416,29 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       if (isReturn) {
         entry.unitsReturned += qty;
         entry.refundAmount += totalItemAmount;
-        const profitImpact = qty * (unitPrice - unitCost);
-        entry.productProfit -= profitImpact;
         entry.totalCogs -= qty * unitCost;
+        entry.paidAmount -= totalItemAmount;
       } else {
         entry.unitsSold += qty;
         entry.grossSales += totalItemAmount;
-        const profitImpact = qty * (unitPrice - unitCost);
-        entry.productProfit += profitImpact;
         entry.totalCogs += qty * unitCost;
 
+        let itemDiscount = 0;
         if (si.sale?.discount_amount && Number(si.sale?.total_amount || 0) > 0) {
-          const allocatedDiscount = (totalItemAmount / Number(si.sale.total_amount)) * Number(si.sale.discount_amount);
-          entry.discount += allocatedDiscount;
+          itemDiscount = (totalItemAmount / Number(si.sale.total_amount)) * Number(si.sale.discount_amount);
+          entry.discount += itemDiscount;
         }
+
+        const itemPayable = totalItemAmount - itemDiscount;
+        const s = si.sale;
+        const salePayable = Number(s?.payable_amount || 0);
+        const salePaid = Number(s?.received_amount !== undefined && s?.received_amount !== null ? s.received_amount : s?.payable_amount || 0);
+        const paidRatio = salePayable > 0 ? Math.min(1, Math.max(0, salePaid / salePayable)) : 1;
+        const itemPaid = itemPayable * paidRatio;
+        const itemDue = Math.max(0, itemPayable - itemPaid);
+
+        entry.paidAmount += itemPaid;
+        entry.dueAmount += itemDue;
       }
     });
 
@@ -412,8 +447,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     motherProductMap.forEach(item => {
       item.netUnitsSold = item.unitsSold - item.unitsReturned;
       item.netSales = item.grossSales - item.refundAmount;
+      item.payable = item.netSales - item.discount;
+      item.productProfit = item.paidAmount - item.totalCogs;
       item.orderCount = item.orderSet.size;
-      item.marginPct = item.netSales > 0 ? (item.productProfit / item.netSales) * 100 : 0;
+      item.marginPct = item.paidAmount > 0 ? (item.productProfit / item.paidAmount) * 100 : 0;
 
       // Only include if it has sales activity in selected range or if looking at All Time
       if (item.unitsSold > 0 || item.unitsReturned > 0 || filter === 'all') {
@@ -431,6 +468,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: item.discount,
           refundAmount: item.refundAmount,
           netSales: item.netSales,
+          payable: item.payable,
+          paidAmount: item.paidAmount,
+          dueAmount: item.dueAmount,
           totalCogs: item.totalCogs,
           productProfit: item.productProfit,
           marginPct: item.marginPct,
@@ -498,6 +538,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: 0,
           refundAmount: 0,
           netSales: 0,
+          payable: 0,
+          paidAmount: 0,
+          dueAmount: 0,
           totalCogs: 0,
           categoryProfit: 0,
           marginPct: 0,
@@ -537,6 +580,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: 0,
           refundAmount: 0,
           netSales: 0,
+          payable: 0,
+          paidAmount: 0,
+          dueAmount: 0,
           totalCogs: 0,
           categoryProfit: 0,
           marginPct: 0,
@@ -552,9 +598,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       }
 
       const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+      const isRent = si.sale_type === 'RENT';
       const qty = Number(si.quantity || 0);
       const unitPrice = Number(si.unit_price || 0);
-      const unitCost = Number(v?.purchase_price || 0);
+      const unitCost = isRent ? 0 : Number(v?.purchase_price || 0);
       const totalItemAmount = Math.abs(Number(si.total_price || (qty * unitPrice) || 0));
 
       if (si.sale_id) {
@@ -564,20 +611,29 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       if (isReturn) {
         entry.unitsReturned += qty;
         entry.refundAmount += totalItemAmount;
-        const profitImpact = qty * (unitPrice - unitCost);
-        entry.categoryProfit -= profitImpact;
         entry.totalCogs -= qty * unitCost;
+        entry.paidAmount -= totalItemAmount;
       } else {
         entry.unitsSold += qty;
         entry.grossSales += totalItemAmount;
-        const profitImpact = qty * (unitPrice - unitCost);
-        entry.categoryProfit += profitImpact;
         entry.totalCogs += qty * unitCost;
 
+        let itemDiscount = 0;
         if (si.sale?.discount_amount && Number(si.sale?.total_amount || 0) > 0) {
-          const allocatedDiscount = (totalItemAmount / Number(si.sale.total_amount)) * Number(si.sale.discount_amount);
-          entry.discount += allocatedDiscount;
+          itemDiscount = (totalItemAmount / Number(si.sale.total_amount)) * Number(si.sale.discount_amount);
+          entry.discount += itemDiscount;
         }
+
+        const itemPayable = totalItemAmount - itemDiscount;
+        const s = si.sale;
+        const salePayable = Number(s?.payable_amount || 0);
+        const salePaid = Number(s?.received_amount !== undefined && s?.received_amount !== null ? s.received_amount : s?.payable_amount || 0);
+        const paidRatio = salePayable > 0 ? Math.min(1, Math.max(0, salePaid / salePayable)) : 1;
+        const itemPaid = itemPayable * paidRatio;
+        const itemDue = Math.max(0, itemPayable - itemPaid);
+
+        entry.paidAmount += itemPaid;
+        entry.dueAmount += itemDue;
       }
     });
 
@@ -587,8 +643,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       item.productsCount = item.productSet.size;
       item.netUnitsSold = item.unitsSold - item.unitsReturned;
       item.netSales = item.grossSales - item.refundAmount;
+      item.payable = item.netSales - item.discount;
+      item.categoryProfit = item.paidAmount - item.totalCogs;
       item.orderCount = item.orderSet.size;
-      item.marginPct = item.netSales > 0 ? (item.categoryProfit / item.netSales) * 100 : 0;
+      item.marginPct = item.paidAmount > 0 ? (item.categoryProfit / item.paidAmount) * 100 : 0;
 
       // Only include if it has sales activity in selected range or if looking at All Time
       if (item.unitsSold > 0 || item.unitsReturned > 0 || filter === 'all') {
@@ -605,6 +663,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: item.discount,
           refundAmount: item.refundAmount,
           netSales: item.netSales,
+          payable: item.payable,
+          paidAmount: item.paidAmount,
+          dueAmount: item.dueAmount,
           totalCogs: item.totalCogs,
           categoryProfit: item.categoryProfit,
           marginPct: item.marginPct,
@@ -662,6 +723,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const totalUnitsSold = filteredCategoryStats.reduce((sum, c) => sum + c.netUnitsSold, 0);
       const totalCatSales = filteredCategoryStats.reduce((sum, c) => sum + c.netSales, 0);
       const totalCatDiscount = filteredCategoryStats.reduce((sum, c) => sum + c.discount, 0);
+      const totalCatPayable = filteredCategoryStats.reduce((sum, c) => sum + c.payable, 0);
+      const totalCatPaid = filteredCategoryStats.reduce((sum, c) => sum + c.paidAmount, 0);
+      const totalCatDue = Math.max(0, totalCatPayable - totalCatPaid);
       const totalCatProfit = filteredCategoryStats.reduce((sum, c) => sum + c.categoryProfit, 0);
 
       exportTableToPdf({
@@ -673,6 +737,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { label: 'Units Sold', value: `${totalUnitsSold} pcs` },
           { label: 'Total Sales', value: `Tk ${formatAmount(totalCatSales)}` },
           { label: 'Total Discount', value: `Tk ${formatAmount(totalCatDiscount)}` },
+          { label: 'Total Payable', value: `Tk ${formatAmount(totalCatPayable)}` },
+          { label: 'Paid Amount', value: `Tk ${formatAmount(totalCatPaid)}` },
+          { label: 'Due Amount', value: `Tk ${formatAmount(totalCatDue)}` },
           { label: 'Category Profit', value: `Tk ${formatAmount(totalCatProfit)}` },
           { label: 'Net Profit', value: `Tk ${formatAmount(totalCatProfit)}` }
         ],
@@ -683,6 +750,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { header: 'Units Sold', key: 'netUnitsSold', align: 'center' },
           { header: 'Total Sales', key: 'netSales', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Discount', key: 'discount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Total Payable', key: 'payable', align: 'right', format: (v, r) => `Tk ${formatAmount(v)} (Paid: ${formatAmount(r?.paidAmount || 0)})` },
           { header: 'Category Profit', key: 'categoryProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Net Profit', key: 'categoryProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
         ],
@@ -692,6 +760,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const totalUnitsSold = filteredProductStats.reduce((sum, p) => sum + p.netUnitsSold, 0);
       const totalProductSales = filteredProductStats.reduce((sum, p) => sum + p.netSales, 0);
       const totalProductDiscount = filteredProductStats.reduce((sum, p) => sum + p.discount, 0);
+      const totalProductPayable = filteredProductStats.reduce((sum, p) => sum + p.payable, 0);
+      const totalProductPaid = filteredProductStats.reduce((sum, p) => sum + p.paidAmount, 0);
+      const totalProductDue = Math.max(0, totalProductPayable - totalProductPaid);
       const totalProductProfit = filteredProductStats.reduce((sum, p) => sum + p.productProfit, 0);
 
       exportTableToPdf({
@@ -703,6 +774,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { label: 'Units Sold', value: `${totalUnitsSold} pcs` },
           { label: 'Total Sales', value: `Tk ${formatAmount(totalProductSales)}` },
           { label: 'Total Discount', value: `Tk ${formatAmount(totalProductDiscount)}` },
+          { label: 'Total Payable', value: `Tk ${formatAmount(totalProductPayable)}` },
+          { label: 'Paid Amount', value: `Tk ${formatAmount(totalProductPaid)}` },
+          { label: 'Due Amount', value: `Tk ${formatAmount(totalProductDue)}` },
           { label: 'Product Profit', value: `Tk ${formatAmount(totalProductProfit)}` },
           { label: 'Net Profit', value: `Tk ${formatAmount(totalProductProfit)}` }
         ],
@@ -713,6 +787,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { header: 'Units Sold', key: 'netUnitsSold', align: 'center' },
           { header: 'Total Sales', key: 'netSales', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Discount', key: 'discount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Total Payable', key: 'payable', align: 'right', format: (v, r) => `Tk ${formatAmount(v)} (Paid: ${formatAmount(r?.paidAmount || 0)})` },
           { header: 'Product Profit', key: 'productProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Net Profit', key: 'productProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
         ],
@@ -724,8 +799,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         title: 'Business Performance Report (Date-wise Breakdown)',
         dateRange: dateRangeLabel,
         summaryCards: [
-          { label: 'Total Sales', value: `Tk ${formatAmount(totalRevenue)}` },
+          { label: 'Total Sales', value: `Tk ${formatAmount(totalGrossSales)}` },
           { label: 'Total Discount', value: `Tk ${formatAmount(totalDiscount)}` },
+          { label: 'Total Payable', value: `Tk ${formatAmount(totalPayable)}` },
+          { label: 'Paid Amount', value: `Tk ${formatAmount(totalPaid)}` },
+          { label: 'Due Amount', value: `Tk ${formatAmount(totalDue)}` },
           { label: 'Returns / Refunds', value: `-Tk ${formatAmount(totalRefunds)}` },
           { label: 'Product Profit', value: `Tk ${formatAmount(totalProfit)}` },
           { label: 'Shop Expenses', value: `Tk ${formatAmount(totalExpenses)}` },
@@ -736,8 +814,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { header: 'Date', key: 'dateKey', format: (v) => formatDateDisplay(v) },
           { header: 'Orders', key: 'orderCount', align: 'center' },
           { header: 'Units Sold', key: 'unitsSold', align: 'center' },
-          { header: 'Total Sales', key: 'revenue', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Total Sales', key: 'grossSales', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Discount', key: 'discount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Total Payable', key: 'payable', align: 'right', format: (v, r) => `Tk ${formatAmount(v)} (Paid: ${formatAmount(r?.paidAmount || 0)})` },
           { header: 'Product Profit', key: 'productProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Expenses', key: 'expenses', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Net Profit', key: 'netProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
@@ -945,9 +1024,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       {/* KPI Stats Cards */}
       <div className="reports-kpi-grid">
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div className="card-title">Total Sales (Net)</div>
-          <div className="card-value" style={{ color: 'var(--color-primary)' }}>
-            ৳{formatAmount(totalRevenue)}
+          <div className="card-title">Total Sales</div>
+          <div className="card-value" style={{ color: 'var(--text-primary)' }}>
+            ৳{formatAmount(totalGrossSales)}
           </div>
         </div>
 
@@ -955,6 +1034,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           <div className="card-title">Total Discount</div>
           <div className="card-value" style={{ color: totalDiscount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
             ৳{formatAmount(totalDiscount)}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div className="card-title">Total Payable</div>
+          <div className="card-value" style={{ color: 'var(--color-primary)', fontWeight: 800 }}>
+            ৳{formatAmount(totalPayable)}
+          </div>
+          <div style={{ fontSize: '10.5px', marginTop: '3px', fontWeight: 600 }}>
+            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(totalPaid)}</span>
+            {totalDue > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '6px' }}>· Due: ৳{formatAmount(totalDue)}</span>}
           </div>
         </div>
 
@@ -1162,6 +1252,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                       <th style={{ textAlign: 'center' }}>Units Sold</th>
                       <th style={{ textAlign: 'right' }}>Total Sales</th>
                       <th style={{ textAlign: 'right' }}>Discount</th>
+                      <th style={{ textAlign: 'right' }}>Total Payable</th>
                       <th style={{ textAlign: 'right' }}>Product Profit</th>
                       <th style={{ textAlign: 'right' }}>Expenses</th>
                       <th style={{ textAlign: 'right' }}>Net Profit</th>
@@ -1180,9 +1271,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         </td>
                         <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.orderCount}</td>
                         <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.unitsSold}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700 }}>৳{formatAmount(item.revenue)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>৳{formatAmount(item.grossSales)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: item.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
                           {item.discount > 0 ? `৳${formatAmount(item.discount)}` : '-'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                          <div style={{ color: 'var(--color-primary)' }}>৳{formatAmount(item.payable)}</div>
+                          <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
+                            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(item.paidAmount)}</span>
+                            {item.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(item.dueAmount)}</span>}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-info)' }}>৳{formatAmount(item.productProfit)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: item.expenses > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
@@ -1240,19 +1338,35 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px' }}>
                       <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Sales</div>
-                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>৳{formatAmount(item.revenue)}</div>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>৳{formatAmount(item.grossSales)}</div>
                       </div>
 
                       <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Discount</div>
                         <div style={{ fontWeight: 700, color: item.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
-                          ৳{formatAmount(item.discount)}
+                          {item.discount > 0 ? `৳${formatAmount(item.discount)}` : '-'}
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Payable</div>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>৳{formatAmount(item.payable)}</div>
+                        <div style={{ fontSize: '9.5px', fontWeight: 600, marginTop: '2px' }}>
+                          <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(item.paidAmount)}</span>
+                          {item.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(item.dueAmount)}</span>}
                         </div>
                       </div>
 
                       <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Product Profit</div>
                         <div style={{ fontWeight: 800, color: 'var(--color-info)' }}>৳{formatAmount(item.productProfit)}</div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Expenses</div>
+                        <div style={{ fontWeight: 700, color: item.expenses > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+                          ৳{formatAmount(item.expenses)}
+                        </div>
                       </div>
 
                       <div style={{ 
@@ -1313,6 +1427,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                       <th style={{ textAlign: 'center' }}>Units Sold</th>
                       <th style={{ textAlign: 'right' }}>Total Sales</th>
                       <th style={{ textAlign: 'right' }}>Discount</th>
+                      <th style={{ textAlign: 'right' }}>Total Payable</th>
                       <th style={{ textAlign: 'right' }}>Product Profit</th>
                       <th style={{ textAlign: 'right' }}>Net Profit</th>
                     </tr>
@@ -1342,6 +1457,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: prod.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
                           {prod.discount > 0 ? `৳${formatAmount(prod.discount)}` : '-'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                          <div style={{ color: 'var(--color-primary)' }}>৳{formatAmount(prod.payable)}</div>
+                          <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
+                            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(prod.paidAmount)}</span>
+                            {prod.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(prod.dueAmount)}</span>}
+                          </div>
                         </td>
                         <td style={{ 
                           textAlign: 'right', 
@@ -1415,7 +1537,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                       <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Discount</div>
                         <div style={{ fontWeight: 700, color: prod.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
-                          ৳{formatAmount(prod.discount)}
+                          {prod.discount > 0 ? `৳${formatAmount(prod.discount)}` : '-'}
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Payable</div>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>৳{formatAmount(prod.payable)}</div>
+                        <div style={{ fontSize: '9.5px', fontWeight: 600, marginTop: '2px' }}>
+                          <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(prod.paidAmount)}</span>
+                          {prod.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(prod.dueAmount)}</span>}
                         </div>
                       </div>
 
@@ -1428,7 +1559,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         background: prod.productProfit >= 0 ? '#ecfdf5' : '#fef2f2', 
                         padding: '6px 8px', 
                         borderRadius: '4px',
-                        border: prod.productProfit >= 0 ? '1px solid #d1fae5' : '1px solid #fee2e2'
+                        border: prod.productProfit >= 0 ? '1px solid #d1fae5' : '1px solid #fee2e2',
+                        gridColumn: 'span 2'
                       }}>
                         <div style={{ fontSize: '10px', color: prod.productProfit >= 0 ? '#065f46' : '#991b1b', fontWeight: 600 }}>Net Profit</div>
                         <div style={{ fontWeight: 800, color: prod.productProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
@@ -1483,6 +1615,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                       <th style={{ textAlign: 'center' }}>Units Sold</th>
                       <th style={{ textAlign: 'right' }}>Total Sales</th>
                       <th style={{ textAlign: 'right' }}>Discount</th>
+                      <th style={{ textAlign: 'right' }}>Total Payable</th>
                       <th style={{ textAlign: 'right' }}>Category Profit</th>
                       <th style={{ textAlign: 'right' }}>Net Profit</th>
                     </tr>
@@ -1524,6 +1657,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: cat.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
                           {cat.discount > 0 ? `৳${formatAmount(cat.discount)}` : '-'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                          <div style={{ color: 'var(--color-primary)' }}>৳{formatAmount(cat.payable)}</div>
+                          <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
+                            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(cat.paidAmount)}</span>
+                            {cat.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(cat.dueAmount)}</span>}
+                          </div>
                         </td>
                         <td style={{ 
                           textAlign: 'right', 
@@ -1600,6 +1740,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                       </div>
 
                       <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Payable</div>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>৳{formatAmount(cat.payable)}</div>
+                        <div style={{ fontSize: '9.5px', fontWeight: 600, marginTop: '2px' }}>
+                          <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(cat.paidAmount)}</span>
+                          {cat.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(cat.dueAmount)}</span>}
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Category Profit</div>
                         <div style={{ fontWeight: 800, color: 'var(--color-info)' }}>৳{formatAmount(cat.categoryProfit)}</div>
                       </div>
@@ -1608,7 +1757,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         background: cat.categoryProfit >= 0 ? '#ecfdf5' : '#fef2f2', 
                         padding: '6px 8px', 
                         borderRadius: '4px',
-                        border: cat.categoryProfit >= 0 ? '1px solid #d1fae5' : '1px solid #fee2e2'
+                        border: cat.categoryProfit >= 0 ? '1px solid #d1fae5' : '1px solid #fee2e2',
+                        gridColumn: 'span 2'
                       }}>
                         <div style={{ fontSize: '10px', color: cat.categoryProfit >= 0 ? '#065f46' : '#991b1b', fontWeight: 600 }}>Net Profit</div>
                         <div style={{ fontWeight: 800, color: cat.categoryProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
