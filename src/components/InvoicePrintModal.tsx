@@ -65,7 +65,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   leftShift: 0,
   verticalOffset: 2.0, // 2mm top feed
   fontScale: 105,
-  itemSpacing: 0.5,
+  itemSpacing: 1.2, // Clean 1.2mm gap between product items
   showLogo: true,
   logoSize: 155, // 155px width makes the full brand logo prominent & sharp
   logoThreshold: 210, // Removes cream background noise
@@ -82,7 +82,7 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   footerText: 'Thank you for your shopping!'
 };
 
-const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v16';
+const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v17';
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
@@ -212,14 +212,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
       const isRent = item.saleType === 'RENT';
       const isReturn = item.saleType === 'RETURN';
       return `
-        <div class="item-row" style="margin-bottom: ${settings.itemSpacing}mm;">
+        <div class="item-row" style="margin-bottom: ${(settings.itemSpacing || 1.2)}mm;">
           <div class="item-name">
             ${item.name} ${item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
             ${isRent ? `<span style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; border: 1px solid #000; padding: 0 2px; border-radius: 2px; margin-left: 1mm; font-weight: 900;">[RENT]</span>` : ''}
             ${isReturn ? `<span style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; border: 1px solid #000; padding: 0 2px; border-radius: 2px; margin-left: 1mm; font-weight: 900;">[RETURN]</span>` : ''}
           </div>
           ${isRent && item.returnDate ? `
-            <div style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; font-weight: 800; color: #000000;">
+            <div style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; font-weight: 800; color: #000000; margin-top: 0.3mm;">
               Return Date: ${formatDateDDMMYYYY(item.returnDate)}
             </div>
           ` : ''}
@@ -353,8 +353,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
             }
             .items-section {
               border-bottom: 2px dashed #000000 !important;
-              padding-bottom: 1.2mm !important;
-              margin-bottom: 1.5mm !important;
+              padding-bottom: 1.8mm !important;
+              margin-bottom: 1.8mm !important;
             }
             .item-row {
               display: flex !important;
@@ -368,30 +368,34 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               font-weight: 900 !important;
               word-break: break-word !important;
               overflow-wrap: break-word !important;
-              line-height: 1.2 !important;
+              line-height: 1.25 !important;
               color: #000000 !important;
             }
             .item-code {
               font-size: ${(baseFontSize * 0.85).toFixed(1)}px !important;
               font-weight: 800 !important;
               color: #000000 !important;
-              letter-spacing: 0.2px !important;
-              line-height: 1.15 !important;
+              letter-spacing: 0.3px !important;
+              line-height: 1.2 !important;
+              margin-top: 0.3mm !important;
             }
             .item-details {
               display: flex !important;
               justify-content: space-between !important;
-              align-items: center !important;
+              align-items: baseline !important;
               width: 100% !important;
               box-sizing: border-box !important;
               font-weight: 800 !important;
               font-size: ${(baseFontSize * 0.95).toFixed(1)}px !important;
               color: #000000 !important;
+              margin-top: 0.8mm !important;
             }
             .item-price {
               font-weight: 900 !important;
+              font-size: ${(baseFontSize * 1.0).toFixed(1)}px !important;
               color: #000000 !important;
               flex-shrink: 0 !important;
+              text-align: right !important;
               padding-left: 2mm !important;
             }
             .math-section {
@@ -1097,14 +1101,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               )}
 
               {/* Items List */}
-              <div style={{ borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px' }}>
+              <div style={{ borderBottom: '2px dashed #000000', paddingBottom: '8px', marginBottom: '8px' }}>
                 {data.items.map((item, idx) => {
                   const barcode = item.barcode || item.sku || item.code;
                   const isRent = item.saleType === 'RENT';
                   const isReturn = item.saleType === 'RETURN';
                   return (
-                    <div key={idx} style={{ marginBottom: `${settings.itemSpacing * 3.5}px` }}>
-                      <div style={{ fontWeight: 900, wordBreak: 'break-word', overflowWrap: 'break-word', color: '#000000' }}>
+                    <div key={idx} style={{ marginBottom: `${(settings.itemSpacing || 1.2) * 4.5}px` }}>
+                      <div style={{ fontWeight: 900, wordBreak: 'break-word', overflowWrap: 'break-word', color: '#000000', lineHeight: 1.25 }}>
                         {item.name} {item.size || item.color ? `(${[item.size, item.color].filter(Boolean).join('/')})` : ''}
                         {isRent && (
                           <span style={{ fontSize: `${baseFontSize * 0.82}px`, border: '1px solid #000', padding: '0 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 900 }}>
@@ -1118,18 +1122,18 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                         )}
                       </div>
                       {isRent && item.returnDate && (
-                        <div style={{ fontSize: `${baseFontSize * 0.82}px`, fontWeight: 800, color: '#000000' }}>
+                        <div style={{ fontSize: `${baseFontSize * 0.82}px`, fontWeight: 800, color: '#000000', marginTop: '1px' }}>
                           Return Date: {formatDateDDMMYYYY(item.returnDate)}
                         </div>
                       )}
                       {(settings.showBarcode ?? settings.showProductCode) && barcode && (
-                        <div style={{ fontSize: `${baseFontSize * 0.85}px`, color: '#000000', fontWeight: 800, letterSpacing: '0.2px' }}>
+                        <div style={{ fontSize: `${baseFontSize * 0.85}px`, color: '#000000', fontWeight: 800, letterSpacing: '0.3px', marginTop: '1px' }}>
                           {barcode}
                         </div>
                       )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000' }}>
-                        <span>${item.quantity} × ${isReturn ? '-' : ''}৳${item.unitPrice.toFixed(0)}</span>
-                        <span style={{ fontWeight: 900, flexShrink: 0, paddingLeft: '4px' }}>${isReturn ? '-' : ''}৳${Math.abs(item.totalPrice).toFixed(0)}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000', marginTop: '3px' }}>
+                        <span>{item.quantity} × {isReturn ? '-' : ''}৳{item.unitPrice.toFixed(0)}</span>
+                        <span style={{ fontWeight: 900, fontSize: `${baseFontSize}px`, flexShrink: 0, paddingLeft: '6px' }}>{isReturn ? '-' : ''}৳{Math.abs(item.totalPrice).toFixed(0)}</span>
                       </div>
                     </div>
                   );
@@ -1170,26 +1174,26 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                   <>
                     {(data.paymentRows || []).filter(r => r.amount > 0).map((r, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: `${baseFontSize * 0.95}px`, fontWeight: 700, color: '#000000' }}>
-                        <span>Paid (${r.method}):</span>
+                        <span>Paid ({r.method}):</span>
                         <span>৳{r.amount.toFixed(0)}</span>
                       </div>
                     ))}
                     {(!data.paymentRows || data.paymentRows.length === 0) && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: `${baseFontSize * 0.95}px`, fontWeight: 700, color: '#000000' }}>
-                        <span>Paid (${data.paymentMethod}):</span>
+                        <span>Paid ({data.paymentMethod}):</span>
                         <span>৳{data.receivedAmount.toFixed(0)}</span>
                       </div>
                     )}
                     {data.dueAmount > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, color: '#000000' }}>
                         <span>DUE:</span>
-                        <span>৳${data.dueAmount.toFixed(0)}</span>
+                        <span>৳{data.dueAmount.toFixed(0)}</span>
                       </div>
                     )}
                     {data.changeAmount > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', color: '#000000', fontWeight: 800 }}>
                         <span>Change:</span>
-                        <span>৳${data.changeAmount.toFixed(0)}</span>
+                        <span>৳{data.changeAmount.toFixed(0)}</span>
                       </div>
                     )}
                   </>
