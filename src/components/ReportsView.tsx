@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { DollarSign, ShoppingBag, Calendar, Package, Receipt, Boxes, RotateCcw, FileDown, Search, ArrowUpDown, Layers } from 'lucide-react';
+import { Calendar, FileDown, Search } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { exportTableToPdf } from '../utils/pdfExport';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
