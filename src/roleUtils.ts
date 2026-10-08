@@ -55,6 +55,29 @@ export const isRestrictedStaffRole = (role?: string | null): boolean => {
 };
 
 /**
+ * Returns true if the user's role is Admin / Administrator.
+ */
+export const isAdminRole = (role?: string | null): boolean => {
+  if (role) {
+    const normalized = role.toLowerCase().trim();
+    return normalized === 'admin' || normalized === 'administrator';
+  }
+  // Fallback to checking active session in localStorage
+  try {
+    const mockSessionStr = localStorage.getItem('sb-mock-session');
+    if (mockSessionStr) {
+      const parsed = JSON.parse(mockSessionStr);
+      const sessionRole = parsed?.user?.user_metadata?.role || (parsed?.user?.email === 'admin@zenpos.local' || parsed?.user?.email === 'admin@gmail.com' ? 'admin' : '');
+      const norm = (sessionRole || '').toLowerCase().trim();
+      return norm === 'admin' || norm === 'administrator';
+    }
+  } catch {
+    // Ignore error
+  }
+  return false;
+};
+
+/**
  * Checks if user has permission to access a specific module
  */
 export const hasModuleAccess = (

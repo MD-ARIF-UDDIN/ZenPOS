@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { AlertTriangle, List, ArrowDownUp, SlidersHorizontal, Search, X } from 'lucide-react';
+import { AlertTriangle, List, ArrowDownUp, SlidersHorizontal, Search, X, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
+import { exportTableToPdf } from '../utils/pdfExport';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { isAdminRole } from '../roleUtils';
 
 interface StockViewProps {
   onRefreshStats?: () => void;
+  userRole?: string;
 }
 
-export const StockView: React.FC<StockViewProps> = ({ onRefreshStats }) => {
+export const StockView: React.FC<StockViewProps> = ({ onRefreshStats, userRole }) => {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'inventory' | 'ledger'>('inventory');
@@ -77,6 +81,52 @@ export const StockView: React.FC<StockViewProps> = ({ onRefreshStats }) => {
 
   if (loading) return <div style={{ padding: '24px' }}>Loading inventory audit reports...</div>;
 
+  const handleDownloadPdf = () => {
+    if (activeTab === 'inventory') {
+      const totalUnits = filteredVariants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0);
+      const totalValuation = filteredVariants.reduce((acc, v) => acc + ((v.stock_quantity || 0) * (v.purchase_price || 0)), 0);
+      
+      exportTableToPdf({
+        moduleName: 'Stock Valuation',
+        title: 'Inventory Stock Levels & Valuation Report',
+        summaryCards: [
+          { label: 'Total Variants', value: String(filteredVariants.length) },
+          { label: 'Total Stock Units', value: `${totalUnits} pcs` },
+          { label: 'Total Stock Valuation', value: `Tk ${totalValuation.toFixed(2)}` },
+          { label: 'Low Stock Items', value: `${lowStockItems.length} items` }
+        ],
+        columns: [
+          { header: 'Product Name', key: 'product', format: (_, row) => row.product?.name || '-' },
+          { header: 'SKU', key: 'sku' },
+          { header: 'Barcode', key: 'barcode' },
+          { header: 'Variant', key: 'color', format: (_, row) => `${row.color || '-'}/${row.size || '-'}` },
+          { header: 'Purchase Price', key: 'purchase_price', align: 'right', format: (v) => `Tk ${Number(v || 0).toFixed(2)}` },
+          { header: 'Selling Price', key: 'selling_price', align: 'right', format: (v) => `Tk ${Number(v || 0).toFixed(2)}` },
+          { header: 'Stock Qty', key: 'stock_quantity', align: 'center', format: (v) => `${v} pcs` },
+          { header: 'Total Value', key: 'purchase_price', align: 'right', format: (v, row) => `Tk ${((row.stock_quantity || 0) * Number(v || 0)).toFixed(2)}` },
+          { header: 'Status', key: 'stock_quantity', align: 'center', format: (v, row) => (v <= 0 ? 'Out of Stock' : v <= row.min_stock_level ? 'Low Stock' : 'In Stock') }
+        ],
+        data: filteredVariants
+      });
+    } else {
+      exportTableToPdf({
+        moduleName: 'Stock Audit',
+        title: 'Stock Audit Movement Ledger',
+        columns: [
+          { header: 'Date', key: 'created_at', format: (v) => formatDateDDMMYYYY(v) },
+          { header: 'Product Name', key: 'variant', format: (_, row) => row.variant?.product?.name || '-' },
+          { header: 'SKU / Barcode', key: 'variant', format: (_, row) => row.variant?.sku || row.variant?.barcode || '-' },
+          { header: 'Change Type', key: 'change_type', align: 'center' },
+          { header: 'Quantity Change', key: 'quantity_change', align: 'center', format: (v) => `${v > 0 ? '+' : ''}${v} pcs` },
+          { header: 'Previous Stock', key: 'previous_stock', align: 'center' },
+          { header: 'New Stock', key: 'new_stock', align: 'center' },
+          { header: 'Reason / Notes', key: 'reason' }
+        ],
+        data: ledger
+      });
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
@@ -104,7 +154,7 @@ export const StockView: React.FC<StockViewProps> = ({ onRefreshStats }) => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button 
             className="btn btn-primary btn-sm"
             onClick={() => openAdjustModal()}
@@ -124,6 +174,18 @@ export const StockView: React.FC<StockViewProps> = ({ onRefreshStats }) => {
           >
             <ArrowDownUp size={14} /> Stock Ledger
           </button>
+          {isAdminRole(userRole) && (
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: '0 10px', height: '32px', gap: '5px', fontWeight: 700 }}
+              title="Download PDF Report"
+            >
+              <FileDown size={14} />
+              <span>PDF</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -258,7 +320,7 @@ export const StockView: React.FC<StockViewProps> = ({ onRefreshStats }) => {
             <thead>
               <tr>
                 <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
-                <th>Date/Time</th>
+                <th>Date</th>
                 <th>Item</th>
                 <th>Transaction</th>
                 <th>Quantity Change</th>
@@ -295,7 +357,7 @@ export const StockView: React.FC<StockViewProps> = ({ onRefreshStats }) => {
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                         {(ledgerPage - 1) * ledgerPageSize + idx + 1}
                       </td>
-                      <td>{new Date(log.created_at).toLocaleString()}</td>
+                      <td>{formatDateDDMMYYYY(log.created_at)}</td>
                       <td>
                         {variant ? (
                           <>

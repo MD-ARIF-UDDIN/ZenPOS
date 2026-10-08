@@ -316,6 +316,78 @@ export const dbService = {
     return data || [];
   },
 
+  // Helper: Determine next 6-digit sequential invoice code (e.g., 000001, 000002)
+  async getNextInvoiceCode(): Promise<string> {
+    try {
+      const { data } = await supabase
+        .from('sales')
+        .select('invoice_code')
+        .not('invoice_code', 'is', null)
+        .order('invoice_code', { ascending: false })
+        .limit(20);
+
+      let maxNum = 0;
+      if (data && data.length > 0) {
+        for (const row of data) {
+          if (row.invoice_code) {
+            const num = parseInt(row.invoice_code, 10);
+            if (!isNaN(num) && num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+      }
+
+      if (maxNum === 0) {
+        const { count } = await supabase
+          .from('sales')
+          .select('*', { count: 'exact', head: true });
+        maxNum = count || 0;
+      }
+
+      const nextNum = maxNum + 1;
+      return String(nextNum).padStart(6, '0');
+    } catch (err) {
+      console.error('Error fetching next invoice code:', err);
+      return String(Date.now()).slice(-6);
+    }
+  },
+
+  // Safe one-time / maintenance utility to backfill serial invoice_codes on all past sales without touching any other fields
+  async syncAllInvoiceCodes(): Promise<{ success: boolean; updatedCount: number }> {
+    try {
+      const { data: allSales, error } = await supabase
+        .from('sales')
+        .select('id, sale_date, invoice_code')
+        .order('sale_date', { ascending: true });
+
+      if (error) throw error;
+      if (!allSales || allSales.length === 0) return { success: true, updatedCount: 0 };
+
+      let updatedCount = 0;
+      for (let i = 0; i < allSales.length; i++) {
+        const sale = allSales[i];
+        const targetCode = String(i + 1).padStart(6, '0');
+        if (sale.invoice_code !== targetCode) {
+          const { error: updateError } = await supabase
+            .from('sales')
+            .update({ invoice_code: targetCode })
+            .eq('id', sale.id);
+
+          if (!updateError) {
+            updatedCount++;
+          }
+        }
+      }
+
+      clearPosCache(['sales']);
+      return { success: true, updatedCount };
+    } catch (err) {
+      console.error('Failed to sync invoice codes:', err);
+      throw err;
+    }
+  },
+
   async checkoutSale(
     cart: {
       variant: ProductVariant;
@@ -342,9 +414,12 @@ export const dbService = {
     const changeAmount = payableAmount > 0 && receivedAmount > payableAmount ? receivedAmount - payableAmount : 0;
     const dueAmount = paymentMethod === 'DUE' ? payableAmount : (payableAmount > 0 && receivedAmount < payableAmount ? payableAmount - receivedAmount : 0);
 
+    const invoiceCode = await this.getNextInvoiceCode();
+
     const { data: sale, error: saleError } = await supabase
       .from('sales')
       .insert({
+        invoice_code: invoiceCode,
         total_amount: netSubtotal,
         discount_amount: discount,
         payable_amount: payableAmount,
@@ -410,7 +485,7 @@ export const dbService = {
       }
       
       clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger']);
-      return sale.id;
+      return { id: sale.id, invoice_code: sale.invoice_code || invoiceCode };
     }
     throw new Error('Failed to checkout sale');
   },

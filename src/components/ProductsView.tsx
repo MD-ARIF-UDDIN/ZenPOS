@@ -2,13 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../dbService';
 import type { Product, ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2, Tag, Printer, Search, Edit3, Boxes, Check, ChevronDown, X } from 'lucide-react';
+import { Plus, Trash2, Tag, Printer, Search, Edit3, Boxes, Check, ChevronDown, X, FileDown } from 'lucide-react';
 import { BarcodeLabelModal, printVariantsBatchLabels } from './BarcodeLabelModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { Pagination } from './Pagination';
+import { exportTableToPdf } from '../utils/pdfExport';
+import { isAdminRole } from '../roleUtils';
 
 interface ProductsViewProps {
   onRefreshStats: () => void;
+  userRole?: string;
 }
 
 const getNextGlobalBarcode = (
@@ -533,7 +536,7 @@ interface VariantRowDraft {
   min_stock_level: number;
 }
 
-export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) => {
+export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, userRole }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -1234,6 +1237,63 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
     }
   };
 
+  const handleDownloadPdf = () => {
+    if (viewMode === 'all_variants') {
+      const totalUnits = filteredGlobalVariants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0);
+      exportTableToPdf({
+        moduleName: 'Variants',
+        title: 'All Product Variants Directory',
+        summaryCards: [
+          { label: 'Total Variants', value: String(filteredGlobalVariants.length) },
+          { label: 'Total Stock Units', value: `${totalUnits} pcs` }
+        ],
+        columns: [
+          { header: 'Product Name', key: 'product', format: (_, row) => {
+            const p = products.find(prod => prod.id === row.product_id);
+            return p?.name || '-';
+          }},
+          { header: 'Brand/Category', key: 'product_id', format: (_, row) => {
+            const p = products.find(prod => prod.id === row.product_id);
+            return `${p?.brand || '-'}/${p?.category || '-'}`;
+          }},
+          { header: 'SKU', key: 'sku' },
+          { header: 'Barcode', key: 'barcode' },
+          { header: 'Size/Color', key: 'size', format: (_, row) => `${row.size || '-'}/${row.color || '-'}` },
+          { header: 'Cost Price', key: 'purchase_price', align: 'right', format: (v) => `Tk ${Number(v || 0).toFixed(2)}` },
+          { header: 'Selling Price', key: 'selling_price', align: 'right', format: (v) => `Tk ${Number(v || 0).toFixed(2)}` },
+          { header: 'Rent Price', key: 'rent_price', align: 'right', format: (v) => v ? `Tk ${Number(v).toFixed(2)}` : '-' },
+          { header: 'Stock', key: 'stock_quantity', align: 'center', format: (v) => `${v} pcs` }
+        ],
+        data: filteredGlobalVariants
+      });
+    } else {
+      exportTableToPdf({
+        moduleName: 'Products',
+        title: 'Mother Products Catalog',
+        summaryCards: [
+          { label: 'Total Products', value: String(filteredProducts.length) },
+          { label: 'Total Variants', value: String(variants.length) }
+        ],
+        columns: [
+          { header: 'Product Name', key: 'name' },
+          { header: 'Category', key: 'category' },
+          { header: 'Brand', key: 'brand' },
+          { header: 'Rent Price', key: 'rent_price', align: 'right', format: (v) => v ? `Tk ${Number(v).toFixed(2)}` : '-' },
+          { header: 'Total Variants', key: 'id', align: 'center', format: (v) => {
+            const pVars = variants.filter(varItem => varItem.product_id === v);
+            return `${pVars.length} variants`;
+          }},
+          { header: 'Total Stock', key: 'id', align: 'center', format: (v) => {
+            const pVars = variants.filter(varItem => varItem.product_id === v);
+            const totalStk = pVars.reduce((acc, varItem) => acc + (varItem.stock_quantity || 0), 0);
+            return `${totalStk} pcs`;
+          }}
+        ],
+        data: filteredProducts
+      });
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       
@@ -1282,7 +1342,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats }) =>
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {isAdminRole(userRole) && (
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: '6px 12px', gap: '6px', fontWeight: 700 }}
+              title="Download Products / Variants PDF"
+            >
+              <FileDown size={14} />
+              <span>Download PDF</span>
+            </button>
+          )}
           <button className="btn btn-primary btn-sm" style={{ padding: '6px 14px' }} onClick={handleOpenAddProduct}>
             <Plus size={15} /> Add New Product
           </button>

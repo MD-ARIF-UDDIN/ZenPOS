@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Plus, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
+import { exportTableToPdf } from '../utils/pdfExport';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { isAdminRole } from '../roleUtils';
 
 interface ExpensesViewProps {
   onRefreshStats: () => void;
+  userRole?: string;
 }
 
-export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) => {
+export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats, userRole }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,11 +142,40 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
     );
   };
 
+  const handleDownloadPdf = () => {
+    const totalExp = expenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
+    exportTableToPdf({
+      moduleName: 'Expenses',
+      title: 'Operating Expenses Ledger Report',
+      summaryCards: [
+        { label: 'Total Expense Records', value: String(expenses.length) },
+        { label: 'Total Expenses Value', value: `৳${totalExp.toFixed(2)}` }
+      ],
+      columns: [
+        { header: 'Expense Date', key: 'expense_date', format: (v) => formatDateDDMMYYYY(v) },
+        { header: 'Category', key: 'category' },
+        { header: 'Description', key: 'description' },
+        { header: 'Amount', key: 'amount', align: 'right', format: (v) => `৳${Number(v || 0).toFixed(2)}` }
+      ],
+      data: expenses
+    });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
       {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+        {isAdminRole(userRole) && (
+          <button 
+            className="btn btn-secondary btn-sm" 
+            onClick={handleDownloadPdf}
+            style={{ gap: '6px', fontWeight: 700 }}
+            title="Download Expenses PDF"
+          >
+            <FileDown size={14} /> Download PDF
+          </button>
+        )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
           <Plus size={15} /> Log New Expense
         </button>
@@ -180,7 +213,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                       <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                         {(currentPage - 1) * pageSize + idx + 1}
                       </td>
-                      <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(exp.expense_date).toLocaleDateString()}</td>
+                      <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{formatDateDDMMYYYY(exp.expense_date)}</td>
                       <td>
                         <span style={{
                           background: 'rgba(239, 68, 68, 0.08)',
@@ -274,7 +307,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onRefreshStats }) =>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef2f2', padding: '6px 10px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span>Date: <span style={{ fontWeight: 600 }}>{new Date(exp.expense_date).toLocaleDateString()}</span></span>
+                    <span>Date: <span style={{ fontWeight: 600 }}>{formatDateDDMMYYYY(exp.expense_date)}</span></span>
                     <span>Amount: <span style={{ fontWeight: 800, color: 'var(--color-danger)' }}>৳{exp.amount.toFixed(2)}</span></span>
                   </div>
                 </div>

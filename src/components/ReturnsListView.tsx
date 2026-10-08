@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Search, Eye, RotateCcw, ArrowLeftRight, Trash2, ShoppingBag, DollarSign } from 'lucide-react';
+import { Search, Eye, RotateCcw, ArrowLeftRight, Trash2, ShoppingBag, DollarSign, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
+import { exportTableToPdf } from '../utils/pdfExport';
+import { formatDateDDMMYYYY, formatTimeAMPM, formatAmount } from '../utils/dateUtils';
+import { isAdminRole } from '../roleUtils';
 
 interface ReturnsListViewProps {
   isRestricted?: boolean;
+  userRole?: string;
 }
 
-export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted = false }) => {
+export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted = false, userRole }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +95,7 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
 
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
-    const matchesId = s.id.toLowerCase().includes(q);
+    const matchesId = s.id.toLowerCase().includes(q) || (s.invoice_code && s.invoice_code.toLowerCase().includes(q));
     const matchesMethod = (s.payment_method || '').toLowerCase().includes(q);
     const matchesPhone = s.customer_phone && s.customer_phone.includes(q);
     const matchesBarcode = s.sale_items?.some((si: any) => 
@@ -120,6 +124,7 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
 
   const invoiceData: InvoiceData | null = selectedSale ? {
     invoiceId: selectedSale.id,
+    invoiceCode: selectedSale.invoice_code,
     saleDate: selectedSale.sale_date,
     paymentMethod: selectedSale.payment_method,
     customerPhone: selectedSale.customer_phone,
@@ -144,6 +149,45 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
       returnDate: item.return_date || null
     }))
   } : null;
+
+  const handleDownloadPdf = () => {
+    exportTableToPdf({
+      moduleName: 'Returns',
+      title: 'Returns & Exchanges Ledger',
+      subtitle: `Type: ${filterType === 'ALL' ? 'All Returns & Exchanges' : filterType === 'PURE_RETURN' ? 'Pure Returns Only' : 'Exchanges Only'}`,
+      summaryCards: [
+        { label: 'Total Return Trans.', value: String(totalReturnTxCount) },
+        { label: 'Returned Units', value: `${totalReturnedQty} pcs` },
+        { label: 'Total Refund Value', value: `Tk ${totalRefundValue.toFixed(2)}` }
+      ],
+      columns: [
+        { header: 'Invoice Code', key: 'id', format: (v, row) => row.invoice_code || (v ? v.toUpperCase().substring(0, 8) : '-') },
+        { header: 'Date', key: 'sale_date', format: (v) => formatDateDDMMYYYY(v) },
+        { header: 'Customer Phone', key: 'customer_phone', format: (v) => v || 'Walk-in' },
+        { header: 'Payment Mode', key: 'payment_method', align: 'center' },
+        { 
+          header: 'Returned Products', 
+          key: 'sale_items', 
+          format: (_, row) => {
+            const retItems = (row.sale_items || []).filter((si: any) => si.sale_type === 'RETURN' || si.is_returned);
+            return retItems.map((si: any) => `${si.variant?.sku || si.variant?.barcode || 'Item'} (${si.quantity || 1} pcs)`).join(', ') || '-';
+          }
+        },
+        { 
+          header: 'Replacement Products', 
+          key: 'sale_items', 
+          format: (_, row) => {
+            const newItems = (row.sale_items || []).filter((si: any) => si.sale_type !== 'RETURN' && !si.is_returned);
+            return newItems.map((si: any) => `${si.variant?.sku || si.variant?.barcode || 'Item'} (${si.quantity || 1} pcs)`).join(', ') || '-';
+          }
+        },
+        { header: 'Net Payable', key: 'payable_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+        { header: 'Paid', key: 'received_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+        { header: 'Refund / Due', key: 'due_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
+      ],
+      data: filteredSales
+    });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -267,6 +311,19 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
             Exchanges
           </button>
         </div>
+
+        {isAdminRole(userRole) && (
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '36px', padding: '0 12px', gap: '6px', fontWeight: 700 }}
+            title="Download Returns Ledger PDF"
+          >
+            <FileDown size={14} />
+            <span>Download PDF</span>
+          </button>
+        )}
       </div>
 
       {/* Returns Invoices List Table */}
@@ -279,7 +336,7 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
               <tr>
                 <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
                 <th>Invoice Code</th>
-                <th>Time/Date</th>
+                <th>Date</th>
                 <th>Customer Phone</th>
                 <th>Type</th>
                 <th>Returned Products</th>
@@ -313,17 +370,12 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
                       </td>
                       <td>
                         <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '12px', color: 'var(--color-primary)' }}>
-                          #{s.id.toUpperCase().substring(0, 8)}
+                          #{s.invoice_code || s.id.toUpperCase().substring(0, 8)}
                         </span>
                       </td>
-                      <td style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        {new Date(s.sale_date).toLocaleString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                      <td style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatDateDDMMYYYY(s.sale_date)}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>{formatTimeAMPM(s.sale_date)}</div>
                       </td>
                       <td style={{ fontWeight: s.customer_phone ? 600 : 'normal', fontSize: '12px', color: s.customer_phone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {s.customer_phone ? `📞 ${s.customer_phone}` : '-'}

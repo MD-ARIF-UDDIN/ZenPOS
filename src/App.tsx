@@ -236,7 +236,7 @@ function App() {
       {/* Main Panel */}
       <div className="main-content">
         <header className="header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="header-left">
             <button 
               className="mobile-menu-btn" 
               onClick={() => setMobileMenuOpen(true)}
@@ -254,7 +254,7 @@ function App() {
             >
               <Menu size={20} />
             </button>
-            <div>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
               <h1 className="header-title" style={{ margin: 0 }}>{getPageTitle()}</h1>
             </div>
             <div style={{
@@ -293,7 +293,7 @@ function App() {
             </div>
 
             {/* User Profile */}
-            <div style={{
+            <div className="header-user-pill" style={{
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -351,14 +351,14 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
             <Route path="/pos" element={hasModuleAccess(userPermissions, userRole, 'pos') ? <POSView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/rentals" element={hasModuleAccess(userPermissions, userRole, 'rentals') ? <RentalsView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/returns" element={hasModuleAccess(userPermissions, userRole, 'returns') ? <ReturnsListView isRestricted={isRestricted} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/sales" element={hasModuleAccess(userPermissions, userRole, 'sales') ? <SalesListView isRestricted={isRestricted} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/products" element={hasModuleAccess(userPermissions, userRole, 'products') ? <ProductsView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/stock" element={hasModuleAccess(userPermissions, userRole, 'stock') ? <StockView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/expenses" element={hasModuleAccess(userPermissions, userRole, 'expenses') ? <ExpensesView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/users" element={hasModuleAccess(userPermissions, userRole, 'users') ? <UsersView /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/reports" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <ReportsView /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/rentals" element={hasModuleAccess(userPermissions, userRole, 'rentals') ? <RentalsView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/returns" element={hasModuleAccess(userPermissions, userRole, 'returns') ? <ReturnsListView isRestricted={isRestricted} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/sales" element={hasModuleAccess(userPermissions, userRole, 'sales') ? <SalesListView isRestricted={isRestricted} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/products" element={hasModuleAccess(userPermissions, userRole, 'products') ? <ProductsView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/stock" element={hasModuleAccess(userPermissions, userRole, 'stock') ? <StockView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/expenses" element={hasModuleAccess(userPermissions, userRole, 'expenses') ? <ExpensesView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/users" element={hasModuleAccess(userPermissions, userRole, 'users') ? <UsersView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/reports" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <ReportsView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
             <Route path="*" element={<Navigate to={getDefaultPath()} replace />} />
           </Routes>
         </main>

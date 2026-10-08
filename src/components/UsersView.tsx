@@ -2,11 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Trash2, Edit2, Lock, Unlock, ShieldCheck, UserCheck, Phone, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Edit2, Lock, Unlock, ShieldCheck, UserCheck, Phone, Eye, EyeOff, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
-import { STAFF_ROLES, ALL_APP_MODULES, DEFAULT_ROLE_PERMISSIONS, formatRoleName, cleanPhoneInput, type AppModuleId } from '../roleUtils';
+import { STAFF_ROLES, ALL_APP_MODULES, DEFAULT_ROLE_PERMISSIONS, formatRoleName, cleanPhoneInput, isAdminRole, type AppModuleId } from '../roleUtils';
+import { exportTableToPdf } from '../utils/pdfExport';
 
-export const UsersView: React.FC = () => {
+interface UsersViewProps {
+  userRole?: string;
+}
+
+export const UsersView: React.FC<UsersViewProps> = ({ userRole }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -256,6 +261,29 @@ export const UsersView: React.FC = () => {
     );
   };
 
+  const handleDownloadPdf = () => {
+    exportTableToPdf({
+      moduleName: 'Staff',
+      title: 'Staff & Terminal Profiles Directory',
+      summaryCards: [
+        { label: 'Total Staff Users', value: String(users.length) },
+        { label: 'Active Staff', value: String(users.filter(u => !u.is_locked).length) },
+        { label: 'Locked Accounts', value: String(users.filter(u => u.is_locked).length) }
+      ],
+      columns: [
+        { header: 'Staff Name', key: 'full_name' },
+        { header: 'Login Phone', key: 'phone' },
+        { header: 'Role / Title', key: 'role', format: (v) => formatRoleName(v) },
+        { header: 'Allowed Permissions', key: 'permissions', format: (v, row) => {
+          const perms = Array.isArray(v) ? v : (DEFAULT_ROLE_PERMISSIONS[row.role] || []);
+          return perms.join(', ').toUpperCase();
+        }},
+        { header: 'Status', key: 'is_locked', align: 'center', format: (v) => v ? 'LOCKED' : 'ACTIVE' }
+      ],
+      data: users
+    });
+  };
+
   const paginatedUsers = users.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
@@ -269,20 +297,33 @@ export const UsersView: React.FC = () => {
             Control module access, phone login credentials, and account lock status for each staff member.
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => {
-            setShowAddModal(true);
-            setFullName('');
-            setPhone('');
-            setPassword('');
-            setRole('cashier');
-            setSelectedPermissions(DEFAULT_ROLE_PERMISSIONS.cashier);
-          }}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 16px', fontWeight: 700 }}
-        >
-          <Plus size={16} /> Add Staff Member
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {isAdminRole(userRole) && (
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 14px', fontWeight: 700 }}
+              title="Download Staff Directory PDF"
+            >
+              <FileDown size={15} /> Download PDF
+            </button>
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setShowAddModal(true);
+              setFullName('');
+              setPhone('');
+              setPassword('');
+              setRole('cashier');
+              setSelectedPermissions(DEFAULT_ROLE_PERMISSIONS.cashier);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px', padding: '0 16px', fontWeight: 700 }}
+          >
+            <Plus size={16} /> Add Staff Member
+          </button>
+        </div>
       </div>
 
       {/* Users Table */}

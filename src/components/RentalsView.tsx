@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Search, Clock, CheckCircle2, AlertCircle, RefreshCw, Phone, ShieldAlert, Check, DollarSign, X } from 'lucide-react';
+import { Search, Clock, CheckCircle2, AlertCircle, RefreshCw, Phone, ShieldAlert, Check, DollarSign, X, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
+import { exportTableToPdf } from '../utils/pdfExport';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { isAdminRole } from '../roleUtils';
 
 type RentalFilter = 'all' | 'active' | 'overdue' | 'returned';
 
-export const RentalsView: React.FC<{ onRefreshStats?: () => void }> = ({ onRefreshStats }) => {
+interface RentalsViewProps {
+  onRefreshStats?: () => void;
+  userRole?: string;
+}
+
+export const RentalsView: React.FC<RentalsViewProps> = ({ onRefreshStats, userRole }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [rentals, setRentals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,6 +160,33 @@ export const RentalsView: React.FC<{ onRefreshStats?: () => void }> = ({ onRefre
     return true;
   });
 
+  const handleDownloadPdf = () => {
+    exportTableToPdf({
+      moduleName: 'Rentals',
+      title: 'Rentals & Bookings Ledger Report',
+      subtitle: `Status Filter: ${filter.toUpperCase()}`,
+      summaryCards: [
+        { label: 'Total Rentals', value: String(totalRentalsCount) },
+        { label: 'Currently On Rent', value: String(activeRentalsCount) },
+        { label: 'Overdue Items', value: String(overdueCount) },
+        { label: 'Pending Due', value: `৳${totalPendingDue.toFixed(2)}` },
+        { label: 'Rental Revenue', value: `৳${totalRentalRevenue.toFixed(2)}` }
+      ],
+      columns: [
+        { header: 'Invoice Code', key: 'sale', format: (_, row) => row.sale?.invoice_code || '-' },
+        { header: 'Customer Phone', key: 'sale', format: (_, row) => row.sale?.customer_phone || 'Walk-in' },
+        { header: 'Product Item', key: 'variant', format: (_, row) => row.variant?.product?.name || '-' },
+        { header: 'SKU / Barcode', key: 'variant', format: (_, row) => row.variant?.sku || row.variant?.barcode || '-' },
+        { header: 'Rental Date', key: 'sale', format: (_, row) => formatDateDDMMYYYY(row.sale?.sale_date) },
+        { header: 'Return Deadline', key: 'return_date', format: (v) => formatDateDDMMYYYY(v) },
+        { header: 'Rent Fee', key: 'unit_price', align: 'right', format: (v, row) => `৳${((row.quantity || 1) * Number(v || 0)).toFixed(2)}` },
+        { header: 'Pending Due', key: 'sale', align: 'right', format: (_, row) => `৳${Number(row.sale?.due_amount || 0).toFixed(2)}` },
+        { header: 'Status', key: 'is_returned', align: 'center', format: (v, row) => (v ? 'Returned' : isOverdue(row.return_date, row.is_returned) ? 'OVERDUE' : 'Active On Rent') }
+      ],
+      data: filteredRentals
+    });
+  };
+
   const paginatedRentals = filteredRentals.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
@@ -278,14 +313,28 @@ export const RentalsView: React.FC<{ onRefreshStats?: () => void }> = ({ onRefre
           ))}
         </div>
 
-        <button 
-          className="btn btn-secondary btn-sm" 
-          onClick={loadRentals}
-          title="Reload rentals list"
-          style={{ height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '5px' }}
-        >
-          <RefreshCw size={13} /> Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isAdminRole(userRole) && (
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="btn btn-secondary btn-sm"
+              style={{ height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700 }}
+              title="Download Rentals PDF"
+            >
+              <FileDown size={14} /> Download PDF
+            </button>
+          )}
+
+          <button 
+            className="btn btn-secondary btn-sm" 
+            onClick={loadRentals}
+            title="Reload rentals list"
+            style={{ height: '36px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+          >
+            <RefreshCw size={13} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Rentals Table */}
@@ -338,8 +387,8 @@ export const RentalsView: React.FC<{ onRefreshStats?: () => void }> = ({ onRefre
                         {(currentPage - 1) * pageSize + idx + 1}
                       </td>
                       <td>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '12px' }}>
-                          {r.sale?.id ? r.sale.id.toUpperCase().substring(0, 8) : '-'}
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {r.sale?.invoice_code || (r.sale?.id ? r.sale.id.toUpperCase().substring(0, 8) : '-')}
                         </span>
                       </td>
                       <td>
@@ -391,13 +440,13 @@ export const RentalsView: React.FC<{ onRefreshStats?: () => void }> = ({ onRefre
                         )}
                       </td>
                       <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        {r.sale?.sale_date ? new Date(r.sale.sale_date).toLocaleDateString() : '-'}
+                        {formatDateDDMMYYYY(r.sale?.sale_date)}
                       </td>
                       <td>
                         {r.return_date ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <span style={{ fontSize: '12px', fontWeight: overdue ? 700 : 500, color: overdue ? 'var(--color-danger)' : 'var(--text-primary)' }}>
-                              {new Date(r.return_date).toLocaleDateString()}
+                              {formatDateDDMMYYYY(r.return_date)}
                             </span>
                             {overdue && (
                               <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--color-danger)', background: '#fee2e2', padding: '1px 5px', borderRadius: '3px', display: 'inline-block', width: 'fit-content' }}>

@@ -3,6 +3,7 @@ import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import type { ProductVariant } from '../store';
 import { X, Trash2, Plus, Minus, Search, AlertTriangle, Save, Barcode, CheckCircle2 } from 'lucide-react';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 
 interface EditSaleModalProps {
   sale: any;
@@ -463,7 +464,7 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
               </span>
             </div>
             <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
-              Original Date: {new Date(sale.sale_date).toLocaleString()} • Stock quantities will auto-recalculate
+              Original Date: {formatDateDDMMYYYY(sale.sale_date)} • Stock quantities will auto-recalculate
             </div>
           </div>
           <button

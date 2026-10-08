@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Search, Eye, Edit2, Trash2 } from 'lucide-react';
+import { Search, Eye, Edit2, Trash2, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 import { EditSaleModal } from './EditSaleModal';
+import { exportTableToPdf } from '../utils/pdfExport';
+import { formatDateDDMMYYYY, formatTimeAMPM, formatAmount } from '../utils/dateUtils';
+import { isAdminRole } from '../roleUtils';
 
 interface SalesListViewProps {
   isRestricted?: boolean;
+  userRole?: string;
 }
 
-export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = false }) => {
+export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = false, userRole }) => {
   const { showToast, showConfirm } = useNotificationStore();
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +78,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
   };
 
   const handleDeleteSale = (sale: any) => {
-    const code = sale.id.toUpperCase().substring(0, 8);
+    const code = sale.invoice_code || sale.id.toUpperCase().substring(0, 8);
     showConfirm(
       'Delete Sale Invoice',
       `Are you sure you want to permanently delete Invoice #${code}? All sold products in this invoice will be automatically returned to inventory stock.`,
@@ -100,7 +104,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
 
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
-    const matchesId = s.id.toLowerCase().includes(q);
+    const matchesId = s.id.toLowerCase().includes(q) || (s.invoice_code && s.invoice_code.toLowerCase().includes(q));
     const matchesMethod = (s.payment_method || '').toLowerCase().includes(q);
     const matchesPhone = s.customer_phone && s.customer_phone.includes(q);
     const matchesBarcode = s.sale_items?.some((si: any) => 
@@ -117,6 +121,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
 
   const invoiceData: InvoiceData | null = selectedSale ? {
     invoiceId: selectedSale.id,
+    invoiceCode: selectedSale.invoice_code,
     saleDate: selectedSale.sale_date,
     paymentMethod: selectedSale.payment_method,
     customerPhone: selectedSale.customer_phone,
@@ -141,6 +146,51 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
       returnDate: item.return_date || null
     }))
   } : null;
+
+  const handleDownloadPdf = () => {
+    const totalInvoices = filteredSales.length;
+    const totalSubtotal = filteredSales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0);
+    const totalDiscount = filteredSales.reduce((sum, s) => sum + Number(s.discount_amount || 0), 0);
+    const totalPayable = filteredSales.reduce((sum, s) => sum + Number(s.payable_amount || 0), 0);
+    const totalPaid = filteredSales.reduce((sum, s) => sum + Number(s.received_amount || (s.payable_amount - (s.due_amount || 0)) || 0), 0);
+    const totalDue = filteredSales.reduce((sum, s) => sum + Number(s.due_amount || 0), 0);
+
+    exportTableToPdf({
+      moduleName: 'Sales',
+      title: 'Completed Sales & Invoices Ledger',
+      subtitle: `Filter: ${filterTab === 'ALL' ? 'All Invoices' : filterTab === 'SALES' ? 'Sales Only' : 'Returns & Exchanges Only'}`,
+      summaryCards: [
+        { label: 'Total Invoices', value: String(totalInvoices) },
+        { label: 'Total Sales (Gross)', value: `Tk ${formatAmount(totalSubtotal)}` },
+        { label: 'Total Discount', value: `Tk ${formatAmount(totalDiscount)}` },
+        { label: 'Net Payable', value: `Tk ${formatAmount(totalPayable)}` },
+        { label: 'Total Collected', value: `Tk ${formatAmount(totalPaid)}` },
+        { label: 'Total Due', value: `Tk ${formatAmount(totalDue)}` }
+      ],
+      columns: [
+        { header: 'Invoice Code', key: 'id', format: (v, row) => row.invoice_code || (v ? v.toUpperCase().substring(0, 8) : '-') },
+        { header: 'Date', key: 'sale_date', format: (v) => formatDateDDMMYYYY(v) },
+        { header: 'Customer Phone', key: 'customer_phone', format: (v) => v || 'Walk-in' },
+        { 
+          header: 'Barcode', 
+          key: 'sale_items', 
+          format: (_, row) => {
+            const barcodes = (row.sale_items || [])
+              .map((it: any) => it.variant?.barcode)
+              .filter(Boolean);
+            return barcodes.length > 0 ? barcodes.join('\n') : '-';
+          }
+        },
+        { header: 'Payment Mode', key: 'payment_method', align: 'center' },
+        { header: 'Subtotal', key: 'total_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+        { header: 'Discount', key: 'discount_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+        { header: 'Total Payable', key: 'payable_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+        { header: 'Paid', key: 'received_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+        { header: 'Due', key: 'due_amount', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
+      ],
+      data: filteredSales
+    });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -213,6 +263,19 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
             Returns & Exchanges Only
           </button>
         </div>
+
+        {isAdminRole(userRole) && (
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '36px', padding: '0 12px', gap: '6px', fontWeight: 700 }}
+            title="Download Ledger PDF"
+          >
+            <FileDown size={14} />
+            <span>Download PDF</span>
+          </button>
+        )}
       </div>
 
       {/* Sales Invoices List */}
@@ -225,7 +288,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
               <tr>
                 <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
                 <th>Invoice Code</th>
-                <th>Time/Date</th>
+                <th>Date</th>
                 <th>Customer Phone</th>
                 <th>Product Code</th>
                 <th>Barcode</th>
@@ -252,9 +315,14 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                       {(currentPage - 1) * pageSize + idx + 1}
                     </td>
                     <td>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '12px' }}>{s.id.toUpperCase().substring(0, 8)}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {s.invoice_code || s.id.toUpperCase().substring(0, 8)}
+                      </span>
                     </td>
-                    <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(s.sale_date).toLocaleDateString()}</td>
+                    <td style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatDateDDMMYYYY(s.sale_date)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>{formatTimeAMPM(s.sale_date)}</div>
+                    </td>
                     <td style={{ fontWeight: s.customer_phone ? 600 : 'normal', fontSize: '12px', color: s.customer_phone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                       {s.customer_phone ? `📞 ${s.customer_phone}` : '-'}
                     </td>
@@ -329,18 +397,18 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                         fontWeight: 600
                       }}>{s.payment_method}</span>
                     </td>
-                    <td style={{ textAlign: 'right', fontSize: '12.5px' }}>৳{s.total_amount.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', fontSize: '12.5px' }}>৳{formatAmount(s.total_amount)}</td>
                     <td style={{ textAlign: 'right', fontSize: '12.5px', color: s.discount_amount > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                      ৳{s.discount_amount.toFixed(2)}
+                      ৳{formatAmount(s.discount_amount)}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '13px', color: 'var(--color-primary)' }}>
-                      ৳{s.payable_amount.toFixed(2)}
+                      ৳{formatAmount(s.payable_amount)}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: 'var(--color-success)' }}>
-                      ৳{(s.payable_amount - s.due_amount).toFixed(2)}
+                      ৳{formatAmount(s.payable_amount - s.due_amount)}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: s.due_amount > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                      {s.due_amount > 0 ? `৳${s.due_amount.toFixed(2)}` : '৳0.00'}
+                      {s.due_amount > 0 ? `৳${formatAmount(s.due_amount)}` : '৳0'}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>

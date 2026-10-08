@@ -232,6 +232,24 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     }, 50);
   };
 
+  const handleSwitchMode = (newMode: 'SALE' | 'RETURN') => {
+    if (posMode === newMode) return;
+    clearCart();
+    setCheckoutSuccess(null);
+    setShowReceipt(false);
+    setSaleSearchQuery('');
+    setReturnSearchQuery('');
+    setExchangeSearchQuery('');
+    setCustomerPhone('');
+    setDiscount(0);
+    setPaymentRows([{ method: 'CASH', amount: 0 }]);
+    setPosMode(newMode);
+    setTimeout(() => {
+      if (newMode === 'SALE') saleInputRef.current?.focus();
+      else returnInputRef.current?.focus();
+    }, 50);
+  };
+
   const addItemToCart = (variant: ProductVariant, type: 'SALE' | 'RETURN') => {
     if (checkoutSuccess || showReceipt) {
       clearCart();
@@ -308,7 +326,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     try {
       setCheckingOut(true);
       showToast('Processing transaction...', 'info');
-      const saleId = await dbService.checkoutSale(
+      const saleResult = await dbService.checkoutSale(
         cart,
         discount,
         finalMethod,
@@ -316,8 +334,12 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         customerPhone
       );
 
+      const saleId = typeof saleResult === 'string' ? saleResult : saleResult.id;
+      const invoiceCode = typeof saleResult === 'object' ? saleResult.invoice_code : undefined;
+
       const invoiceData: InvoiceData = {
         invoiceId: saleId,
+        invoiceCode: invoiceCode,
         saleDate: new Date().toISOString(),
         paymentMethod: finalMethod,
         customerPhone: customerPhone,
@@ -456,10 +478,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#fff', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
           <button
             type="button"
-            onClick={() => {
-              setPosMode('SALE');
-              setTimeout(() => saleInputRef.current?.focus(), 50);
-            }}
+            onClick={() => handleSwitchMode('SALE')}
             style={{
               padding: '8px 24px',
               fontSize: '14px',
@@ -477,15 +496,12 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
               boxShadow: posMode === 'SALE' ? '0 2px 6px rgba(11, 37, 69, 0.25)' : 'none'
             }}
           >
-            Sale Desk
+            Sale
           </button>
 
           <button
             type="button"
-            onClick={() => {
-              setPosMode('RETURN');
-              setTimeout(() => returnInputRef.current?.focus(), 50);
-            }}
+            onClick={() => handleSwitchMode('RETURN')}
             style={{
               padding: '8px 24px',
               fontSize: '14px',
@@ -503,7 +519,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
               boxShadow: posMode === 'RETURN' ? '0 2px 6px rgba(220, 38, 38, 0.35)' : 'none'
             }}
           >
-            Return Desk
+            Return/Exchange
           </button>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>

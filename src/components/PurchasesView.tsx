@@ -4,6 +4,7 @@ import type { ProductVariant } from '../store';
 import { useNotificationStore } from '../store';
 import { Plus, Truck } from 'lucide-react';
 import { Pagination } from './Pagination';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 
 interface PurchasesViewProps {
   onRefreshStats: () => void;
@@ -225,7 +226,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({ onRefreshStats }) 
                   <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                     {(currentPage - 1) * pageSize + idx + 1}
                   </td>
-                  <td>{new Date(p.purchase_date).toLocaleDateString()}</td>
+                  <td>{formatDateDDMMYYYY(p.purchase_date)}</td>
                   <td>{p.supplier?.name || 'Unknown Supplier'}</td>
                   <td style={{ fontWeight: 'bold' }}>{p.invoice_number}</td>
                   <td>৳{(p.shipping_cost || 0).toFixed(2)}</td>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, X, Sliders, RefreshCw, Store, AlertCircle, Eye, AlignCenter } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 
 export interface InvoiceItem {
   id?: string;
@@ -19,6 +20,7 @@ export interface InvoiceItem {
 
 export interface InvoiceData {
   invoiceId: string;
+  invoiceCode?: string;
   saleDate: string;
   paymentMethod: string;
   customerPhone?: string;
@@ -228,7 +230,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
           </div>
           ${isRent && item.returnDate ? `
             <div style="font-size: ${(baseFontSize * 0.82).toFixed(1)}px; font-weight: 800; color: #000000;">
-              Return Date: ${new Date(item.returnDate).toLocaleDateString()}
+              Return Date: ${formatDateDDMMYYYY(item.returnDate)}
             </div>
           ` : ''}
           ${settings.showProductCode && productCode ? `
@@ -449,8 +451,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               ${settings.showInvoiceDetails ? `
                 <div class="meta-section">
                   <div class="meta-row">
-                    <span>INV: <strong>${data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
-                    <span>${new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
+                    <span>INV: <strong>${data.invoiceCode || data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
+                    <span>${formatDateDDMMYYYY(data.saleDate || new Date())}</span>
                   </div>
                   ${settings.showCustomerPhone && data.customerPhone ? `
                     <div class="meta-row">
@@ -1077,8 +1079,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               {settings.showInvoiceDetails && (
                 <div style={{ fontSize: `${baseFontSize * 0.9}px`, fontWeight: 700, borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px', color: '#000000' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>INV: <strong>{data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
-                    <span>{new Date(data.saleDate || Date.now()).toLocaleDateString()}</span>
+                    <span>INV: <strong>{data.invoiceCode || data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
+                    <span>{formatDateDDMMYYYY(data.saleDate || new Date())}</span>
                   </div>
                   {settings.showCustomerPhone && data.customerPhone && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
@@ -1112,7 +1114,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                       </div>
                       {isRent && item.returnDate && (
                         <div style={{ fontSize: `${baseFontSize * 0.82}px`, fontWeight: 800, color: '#000000' }}>
-                          Return Date: {new Date(item.returnDate).toLocaleDateString()}
+                          Return Date: {formatDateDDMMYYYY(item.returnDate)}
                         </div>
                       )}
                       {settings.showProductCode && productCode && (
