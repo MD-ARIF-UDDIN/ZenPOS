@@ -319,20 +319,23 @@ export const dbService = {
   // Helper: Determine next 6-digit sequential invoice code (e.g., 000001, 000002)
   async getNextInvoiceCode(): Promise<string> {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sales')
         .select('invoice_code')
         .not('invoice_code', 'is', null)
-        .order('invoice_code', { ascending: false })
-        .limit(20);
+        .order('sale_date', { ascending: false })
+        .limit(100);
 
       let maxNum = 0;
-      if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         for (const row of data) {
           if (row.invoice_code) {
-            const num = parseInt(row.invoice_code, 10);
-            if (!isNaN(num) && num > maxNum) {
-              maxNum = num;
+            const cleanStr = String(row.invoice_code).trim();
+            if (/^\d+$/.test(cleanStr)) {
+              const num = parseInt(cleanStr, 10);
+              if (!isNaN(num) && num > maxNum) {
+                maxNum = num;
+              }
             }
           }
         }
@@ -349,7 +352,14 @@ export const dbService = {
       return String(nextNum).padStart(6, '0');
     } catch (err) {
       console.error('Error fetching next invoice code:', err);
-      return String(Date.now()).slice(-6);
+      try {
+        const { count } = await supabase
+          .from('sales')
+          .select('*', { count: 'exact', head: true });
+        return String((count || 0) + 1).padStart(6, '0');
+      } catch {
+        return '000001';
+      }
     }
   },
 

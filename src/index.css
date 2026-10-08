@@ -716,9 +716,9 @@ button, input, select, textarea {
 
 .reports-tabs-wrapper {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .reports-tabs-scroll {
