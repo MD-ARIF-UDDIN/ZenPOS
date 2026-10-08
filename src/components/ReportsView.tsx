@@ -718,115 +718,65 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
 
       {/* KPI Stats Cards */}
       <div className="reports-kpi-grid">
-        
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Total Sales (Net)</div>
-              <div className="card-value" style={{ color: 'var(--color-primary)' }}>
-                ৳{formatAmount(totalRevenue)}
-              </div>
-            </div>
-            <span style={{ flexShrink: 0, background: 'rgba(11, 37, 69, 0.08)', color: 'var(--color-primary)', padding: '7px', borderRadius: 'var(--radius-sm)' }}>
-              <DollarSign size={16} />
-            </span>
+          <div className="card-title">Total Sales (Net)</div>
+          <div className="card-value" style={{ color: 'var(--color-primary)' }}>
+            ৳{formatAmount(totalRevenue)}
           </div>
         </div>
 
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Returns / Refunds</div>
-              <div className="card-value" style={{ color: totalRefunds > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
-                -৳{formatAmount(totalRefunds)}
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                {totalReturnedUnits} items returned
-              </div>
-            </div>
-            <span style={{ flexShrink: 0, background: 'rgba(225, 29, 72, 0.08)', color: 'var(--color-danger)', padding: '7px', borderRadius: 'var(--radius-sm)' }}>
-              <RotateCcw size={16} />
-            </span>
+          <div className="card-title">Total Discount</div>
+          <div className="card-value" style={{ color: totalDiscount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+            ৳{formatAmount(totalDiscount)}
           </div>
         </div>
 
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Product Profit</div>
-              <div className="card-value" style={{ color: 'var(--color-info)' }}>
-                ৳{formatAmount(totalProfit)}
-              </div>
-            </div>
-            <span style={{ flexShrink: 0, background: 'rgba(2, 132, 199, 0.08)', color: 'var(--color-info)', padding: '7px', borderRadius: 'var(--radius-sm)' }}>
-              <Package size={16} />
-            </span>
+          <div className="card-title">Returns / Refunds</div>
+          <div className="card-value" style={{ color: totalRefunds > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+            -৳{formatAmount(totalRefunds)}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            {totalReturnedUnits} items returned
           </div>
         </div>
 
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Shop Expenses</div>
-              <div className="card-value" style={{ color: 'var(--color-danger)' }}>
-                ৳{formatAmount(totalExpenses)}
-              </div>
-            </div>
-            <span style={{ flexShrink: 0, background: 'rgba(225, 29, 72, 0.08)', color: 'var(--color-danger)', padding: '7px', borderRadius: 'var(--radius-sm)' }}>
-              <Receipt size={16} />
-            </span>
+          <div className="card-title">Product Profit</div>
+          <div className="card-value" style={{ color: 'var(--color-info)' }}>
+            ৳{formatAmount(totalProfit)}
           </div>
         </div>
 
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Stock Valuation</div>
-              <div className="card-value" style={{ color: 'var(--text-primary)' }}>
-                ৳{formatAmount(totalStockValuation)}
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                {totalStockUnits} units in stock
-              </div>
-            </div>
-            <span style={{ flexShrink: 0, background: 'rgba(11, 37, 69, 0.08)', color: 'var(--color-primary)', padding: '7px', borderRadius: 'var(--radius-sm)' }}>
-              <Boxes size={16} />
-            </span>
+          <div className="card-title">Shop Expenses</div>
+          <div className="card-value" style={{ color: 'var(--color-danger)' }}>
+            ৳{formatAmount(totalExpenses)}
           </div>
         </div>
 
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Net Profit</div>
-              <div className="card-value" style={{ color: overallNetProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                ৳{formatAmount(overallNetProfit)}
-              </div>
-            </div>
-            <span style={{ 
-              flexShrink: 0,
-              background: overallNetProfit >= 0 ? 'rgba(5, 150, 105, 0.08)' : 'rgba(225, 29, 72, 0.08)', 
-              color: overallNetProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)', 
-              padding: '7px', 
-              borderRadius: 'var(--radius-sm)' 
-            }}>
-              <DollarSign size={16} />
-            </span>
+          <div className="card-title">Stock Valuation</div>
+          <div className="card-value" style={{ color: 'var(--text-primary)' }}>
+            ৳{formatAmount(totalStockValuation)}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            {totalStockUnits} units in stock
           </div>
         </div>
 
         <div className="card" style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="card-title">Total Orders</div>
-              <div className="card-value">{filteredSales.length}</div>
-            </div>
-            <span style={{ flexShrink: 0, background: 'rgba(148, 163, 184, 0.08)', color: 'var(--text-secondary)', padding: '7px', borderRadius: 'var(--radius-sm)' }}>
-              <ShoppingBag size={16} />
-            </span>
+          <div className="card-title">Net Profit</div>
+          <div className="card-value" style={{ color: overallNetProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+            ৳{formatAmount(overallNetProfit)}
           </div>
         </div>
 
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div className="card-title">Total Orders</div>
+          <div className="card-value">{filteredSales.length}</div>
+        </div>
       </div>
 
       {/* Report Switcher Bar (By Date vs By Product) */}

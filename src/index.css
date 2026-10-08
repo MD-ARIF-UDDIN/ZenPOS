@@ -702,7 +702,7 @@ button, input, select, textarea {
 
 @media (min-width: 1024px) {
   .reports-kpi-grid {
-    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
   }
 }
 

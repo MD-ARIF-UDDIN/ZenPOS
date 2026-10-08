@@ -51,21 +51,22 @@ export interface InvoicePrintSettings {
   storePhone: string;
   showInvoiceDetails: boolean;
   showCustomerPhone: boolean;
-  showProductCode: boolean;
+  showBarcode?: boolean;
+  showProductCode?: boolean;
   showPaymentBreakdown: boolean;
   footerText: string;
 }
 
 const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   paperWidth: 58,
-  contentWidth: 42, // 42mm safe printable width
-  leftShift: 5.5, // 5.5mm left margin centers 42mm content on 58mm paper roll (5.5 + 42 + 10.5 = 58)
+  contentWidth: 48, // 48mm safe printable width (optimal for 58mm thermal rolls)
+  leftShift: 2.0, // 2mm margin minimizes empty space on both sides
   verticalOffset: 2.0, // 2mm top feed
   fontScale: 105,
   itemSpacing: 0.5,
   showLogo: true,
-  logoSize: 135, // 135px width makes the full brand logo prominent & sharp
-  logoThreshold: 210, // Removes cream background and keeps dark blue text pure pitch black
+  logoSize: 145, // 145px width for crisp full-width brand banner
+  logoThreshold: 210, // Removes cream background noise
   showStoreHeader: true,
   storeName: 'RAJMAHAL',
   storeSubtitle: 'Elegance — Mens Wear',
@@ -73,34 +74,19 @@ const DEFAULT_INVOICE_SETTINGS: InvoicePrintSettings = {
   storePhone: '',
   showInvoiceDetails: true,
   showCustomerPhone: true,
+  showBarcode: true,
   showProductCode: true,
   showPaymentBreakdown: true,
   footerText: 'Thank you for your shopping!'
 };
 
-const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v13';
+const STORAGE_KEY = 'pos_invoice_print_settings_58mm_v15';
 
 const getSavedInvoiceSettings = (): InvoicePrintSettings => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('pos_invoice_print_settings_58mm_v12');
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Migration from older settings
-      if (parsed.leftShift === undefined) {
-        if (parsed.horizontalOffset !== undefined) {
-          parsed.leftShift = Math.max(0, 5.5 + parsed.horizontalOffset);
-        } else if (parsed.rightShift !== undefined) {
-          parsed.leftShift = Math.max(0, parsed.rightShift + 3);
-        } else {
-          parsed.leftShift = 5.5;
-        }
-      }
-      if (!parsed.logoSize || parsed.logoSize < 60) {
-        parsed.logoSize = 135;
-      }
-      if (!parsed.contentWidth || parsed.contentWidth > 46) {
-        parsed.contentWidth = 42;
-      }
       return { ...DEFAULT_INVOICE_SETTINGS, ...parsed };
     }
   } catch (e) {
@@ -176,15 +162,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_INVOICE_SETTINGS));
   };
 
-  const applyPreset = (preset: 'center58' | 'shiftRight' | 'compact' | 'wide') => {
-    if (preset === 'center58') {
-      updateSettings({ contentWidth: 42, leftShift: 5.5, verticalOffset: 2.0, logoSize: 135 });
+  const applyPreset = (preset: 'optimal' | 'fullwidth' | 'centered' | 'shiftRight') => {
+    if (preset === 'optimal') {
+      updateSettings({ contentWidth: 48, leftShift: 2.0, verticalOffset: 2.0, logoSize: 145 });
+    } else if (preset === 'fullwidth') {
+      updateSettings({ contentWidth: 51, leftShift: 1.0, verticalOffset: 1.5, logoSize: 155 });
+    } else if (preset === 'centered') {
+      updateSettings({ contentWidth: 44, leftShift: 4.5, verticalOffset: 2.0, logoSize: 135 });
     } else if (preset === 'shiftRight') {
-      updateSettings({ contentWidth: 41, leftShift: 7.0, verticalOffset: 2.0, logoSize: 130 });
-    } else if (preset === 'compact') {
-      updateSettings({ contentWidth: 39, leftShift: 6.5, verticalOffset: 1.5, logoSize: 120 });
-    } else if (preset === 'wide') {
-      updateSettings({ contentWidth: 45, leftShift: 4.0, verticalOffset: 2.0, logoSize: 145 });
+      updateSettings({ contentWidth: 46, leftShift: 5.0, verticalOffset: 2.0, logoSize: 140 });
     }
   };
 
@@ -192,7 +178,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
   const baseFontSize = 11.5 * scale;
   const titleFontSize = 15.5 * scale;
   const totalFontSize = 14.5 * scale;
-  const contentWidth = Math.min(50, Math.max(34, settings.contentWidth || 42));
+  const contentWidth = Math.min(56, Math.max(30, settings.contentWidth || 48));
   const leftShift = Math.max(0, settings.leftShift ?? 5.5);
   const vOffset = Math.max(0, settings.verticalOffset ?? 2.0);
   const logoSize = Math.max(40, settings.logoSize || 135);
@@ -218,7 +204,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
     if (!doc) return;
 
     const itemsHtml = data.items.map(item => {
-      const productCode = item.sku || item.code;
+      const barcode = item.barcode || item.sku || item.code;
       const isRent = item.saleType === 'RENT';
       const isReturn = item.saleType === 'RETURN';
       return `
@@ -233,9 +219,9 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               Return Date: ${formatDateDDMMYYYY(item.returnDate)}
             </div>
           ` : ''}
-          ${settings.showProductCode && productCode ? `
+          ${(settings.showBarcode ?? settings.showProductCode) && barcode ? `
             <div class="item-code">
-              Code: ${productCode}
+              ${barcode}
             </div>
           ` : ''}
           <div class="item-details">
@@ -682,26 +668,27 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                 <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>Presets:</span>
                 <button
                   type="button"
-                  onClick={() => applyPreset('center58')}
-                  title="Optimal centering on 58mm roll (5.5mm shift right)"
-                  style={{ padding: '2px 7px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: leftShift === 5.5 ? '#2563eb' : '#eff6ff', color: leftShift === 5.5 ? '#ffffff' : '#1d4ed8', cursor: 'pointer' }}
+                  onClick={() => applyPreset('optimal')}
+                  title="Optimal width for 58mm roll (48mm width, 2mm margin)"
+                  style={{ padding: '2px 7px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', backgroundColor: contentWidth === 48 && leftShift === 2.0 ? '#2563eb' : '#eff6ff', color: contentWidth === 48 && leftShift === 2.0 ? '#ffffff' : '#1d4ed8', cursor: 'pointer' }}
                 >
-                  🎯 Centered (5.5mm Shift)
+                  🎯 Optimal (48mm)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset('fullwidth')}
+                  title="Full paper width edge-to-edge (51mm)"
+                  style={{ padding: '2px 7px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 51 ? '#2563eb' : '#ffffff', color: contentWidth === 51 ? '#ffffff' : '#475569', cursor: 'pointer' }}
+                >
+                  ↔ Full Width (51mm)
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset('shiftRight')}
-                  title="Extra shift right if printer prints too far left"
-                  style={{ padding: '2px 7px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: leftShift === 7.0 ? '#2563eb' : '#ffffff', color: leftShift === 7.0 ? '#ffffff' : '#475569', cursor: 'pointer' }}
+                  title="Shift right if printer prints too close to left cutter"
+                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: leftShift === 5.0 ? '#2563eb' : '#ffffff', color: leftShift === 5.0 ? '#ffffff' : '#475569', cursor: 'pointer' }}
                 >
-                  ▶ Push Right (+7mm)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('wide')}
-                  style={{ padding: '2px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '3px', border: '1px solid #cbd5e1', backgroundColor: contentWidth === 45 ? '#2563eb' : '#ffffff', color: contentWidth === 45 ? '#ffffff' : '#475569', cursor: 'pointer' }}
-                >
-                  Wide 45mm
+                  ▶ Push Right
                 </button>
                 <button
                   type="button"
@@ -771,22 +758,22 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
                       <span>Printable Width:</span>
-                      <span style={{ color: '#2563eb' }}>{contentWidth} mm</span>
+                      <span style={{ color: '#2563eb', fontWeight: 800 }}>{contentWidth} mm</span>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <button type="button" onClick={() => updateSettings({ contentWidth: Math.max(34, contentWidth - 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>-</button>
                       <input 
                         type="range" 
                         min="34" 
-                        max="48" 
+                        max="54" 
                         step="1" 
                         value={contentWidth} 
                         onChange={e => updateSettings({ contentWidth: parseInt(e.target.value) })}
                         style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} 
                       />
-                      <button type="button" onClick={() => updateSettings({ contentWidth: Math.min(48, contentWidth + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
+                      <button type="button" onClick={() => updateSettings({ contentWidth: Math.min(54, contentWidth + 1) })} style={{ width: '24px', height: '22px', fontSize: '11px', fontWeight: 800, border: '1px solid #cbd5e1', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}>+</button>
                     </div>
-                    <div style={{ fontSize: '9px', color: '#64748b', marginTop: '1px' }}>42mm is optimal for 58mm rolls</div>
+                    <div style={{ fontSize: '9px', color: '#64748b', marginTop: '1px' }}>48mm–51mm utilizes full 58mm paper roll</div>
                   </div>
 
                   {/* 4. Font Size Scale */}
@@ -848,11 +835,11 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                   <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: 600 }}>
                     <input 
                       type="checkbox" 
-                      checked={settings.showProductCode} 
-                      onChange={e => updateSettings({ showProductCode: e.target.checked })} 
+                      checked={settings.showBarcode ?? settings.showProductCode ?? true} 
+                      onChange={e => updateSettings({ showBarcode: e.target.checked, showProductCode: e.target.checked })} 
                       style={{ accentColor: '#2563eb' }}
                     />
-                    <span>Product Code (SKU)</span>
+                    <span>Barcode</span>
                   </label>
                 </div>
               </>
@@ -1094,7 +1081,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
               {/* Items List */}
               <div style={{ borderBottom: '2px dashed #000000', paddingBottom: '6px', marginBottom: '6px' }}>
                 {data.items.map((item, idx) => {
-                  const productCode = item.sku || item.code;
+                  const barcode = item.barcode || item.sku || item.code;
                   const isRent = item.saleType === 'RENT';
                   const isReturn = item.saleType === 'RETURN';
                   return (
@@ -1117,9 +1104,9 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                           Return Date: {formatDateDDMMYYYY(item.returnDate)}
                         </div>
                       )}
-                      {settings.showProductCode && productCode && (
+                      {(settings.showBarcode ?? settings.showProductCode) && barcode && (
                         <div style={{ fontSize: `${baseFontSize * 0.85}px`, color: '#000000', fontWeight: 800, letterSpacing: '0.2px' }}>
-                          Code: {productCode}
+                          {barcode}
                         </div>
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: `${baseFontSize * 0.95}px`, color: '#000000' }}>
