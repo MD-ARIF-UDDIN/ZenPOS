@@ -40,6 +40,9 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<string>(sale.payment_method || 'CASH');
   const [receivedAmount, setReceivedAmount] = useState<number>(sale.received_amount ?? sale.payable_amount);
   const [customerPhone, setCustomerPhone] = useState<string>(sale.customer_phone || '');
+  const [customerName, setCustomerName] = useState<string>(sale.customer_name || '');
+  const [guarantorName, setGuarantorName] = useState<string>(sale.guarantor_name || '');
+  const [guarantorPhone, setGuarantorPhone] = useState<string>(sale.guarantor_phone || '');
   const [saving, setSaving] = useState(false);
 
   // Variant search & scanner state
@@ -379,6 +382,9 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
           payment_method: paymentMethod,
           received_amount: Number(receivedAmount) || 0,
           customer_phone: customerPhone.trim(),
+          customer_name: customerName.trim(),
+          guarantor_name: guarantorName.trim(),
+          guarantor_phone: guarantorPhone.trim(),
         },
         items.map((it) => ({
           id: it.id,
@@ -480,8 +486,22 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
         {/* Modal Body */}
         <div style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
-          {/* Customer & Payment Bar */}
+          {/* Customer & Guarantor Details */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                Customer Name
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Customer Name"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                style={{ height: '34px', fontSize: '12.5px' }}
+              />
+            </div>
+
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
                 Customer Phone
@@ -492,6 +512,34 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
                 placeholder="e.g. 01700000000"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
+                style={{ height: '34px', fontSize: '12.5px' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                Guarantor Name (জামানতকারী)
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Guarantor Name"
+                value={guarantorName}
+                onChange={(e) => setGuarantorName(e.target.value)}
+                style={{ height: '34px', fontSize: '12.5px' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                Guarantor Phone
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. 01800000000"
+                value={guarantorPhone}
+                onChange={(e) => setGuarantorPhone(e.target.value)}
                 style={{ height: '34px', fontSize: '12.5px' }}
               />
             </div>

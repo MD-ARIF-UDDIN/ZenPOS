@@ -130,8 +130,13 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
   const totalReturnTxCount = sales.length;
   let totalReturnedQty = 0;
   let totalRefundValue = 0;
+  let totalCashRefund = 0;
 
   sales.forEach(s => {
+    const payable = Number(s.payable_amount || 0);
+    if (payable < 0) {
+      totalCashRefund += Math.abs(payable);
+    }
     (s.sale_items || []).forEach((si: any) => {
       if (si.sale_type === 'RETURN' || si.is_returned) {
         totalReturnedQty += Number(si.quantity || 0);
@@ -148,6 +153,9 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
     saleDate: selectedSale.sale_date,
     paymentMethod: selectedSale.payment_method,
     customerPhone: selectedSale.customer_phone,
+    customerName: selectedSale.customer_name,
+    guarantorName: selectedSale.guarantor_name,
+    guarantorPhone: selectedSale.guarantor_phone,
     totalAmount: selectedSale.total_amount,
     discountAmount: selectedSale.discount_amount || 0,
     payableAmount: selectedSale.payable_amount,
@@ -178,7 +186,7 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
       summaryCards: [
         { label: 'Total Return Trans.', value: String(totalReturnTxCount) },
         { label: 'Returned Units', value: `${totalReturnedQty} pcs` },
-        { label: 'Total Refund Value', value: `Tk ${totalRefundValue.toFixed(2)}` }
+        { label: 'Total Cash Refunded', value: `Tk ${totalCashRefund.toFixed(2)}` }
       ],
       columns: [
         { header: 'Invoice Code', key: 'id', format: (v, row) => row.invoice_code || (v ? v.toUpperCase().substring(0, 8) : '-') },
@@ -250,10 +258,13 @@ export const ReturnsListView: React.FC<ReturnsListViewProps> = ({ isRestricted =
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div className="card-title" style={{ color: '#881337', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>
-                Total Return Credit / Refunded
+                Total Cash Refunded
               </div>
               <div className="card-value" style={{ fontSize: '20px', fontWeight: 800, color: '#b91c1c' }}>
-                ৳{totalRefundValue.toFixed(2)}
+                ৳{totalCashRefund.toFixed(2)}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 600 }}>
+                Merchandise credit: ৳{totalRefundValue.toFixed(2)}
               </div>
             </div>
             <span style={{ background: '#ffe4e6', color: '#b91c1c', padding: '8px', borderRadius: 'var(--radius-sm)' }}>

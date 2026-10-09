@@ -38,6 +38,9 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
   const [lastCompletedInvoice, setLastCompletedInvoice] = useState<InvoiceData | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [guarantorName, setGuarantorName] = useState('');
+  const [guarantorPhone, setGuarantorPhone] = useState('');
   const [sherwaniVariantToPrompt, setSherwaniVariantToPrompt] = useState<ProductVariant | null>(null);
 
   const [paymentRows, setPaymentRows] = useState<{ method: string; amount: number }[]>([{ method: 'CASH', amount: 0 }]);
@@ -224,6 +227,9 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     setReturnSearchQuery('');
     setExchangeSearchQuery('');
     setCustomerPhone('');
+    setCustomerName('');
+    setGuarantorName('');
+    setGuarantorPhone('');
     setDiscount(0);
     setPaymentRows([{ method: 'CASH', amount: 0 }]);
     setTimeout(() => {
@@ -241,6 +247,9 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     setReturnSearchQuery('');
     setExchangeSearchQuery('');
     setCustomerPhone('');
+    setCustomerName('');
+    setGuarantorName('');
+    setGuarantorPhone('');
     setDiscount(0);
     setPaymentRows([{ method: 'CASH', amount: 0 }]);
     setPosMode(newMode);
@@ -256,6 +265,9 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
       setCheckoutSuccess(null);
       setShowReceipt(false);
       setCustomerPhone('');
+      setCustomerName('');
+      setGuarantorName('');
+      setGuarantorPhone('');
       setDiscount(0);
       setPaymentRows([{ method: 'CASH', amount: 0 }]);
     }
@@ -331,7 +343,10 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         discount,
         finalMethod,
         finalReceived,
-        customerPhone
+        customerPhone,
+        customerName,
+        guarantorName,
+        guarantorPhone
       );
 
       const saleId = typeof saleResult === 'string' ? saleResult : saleResult.id;
@@ -343,6 +358,9 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
         saleDate: new Date().toISOString(),
         paymentMethod: finalMethod,
         customerPhone: customerPhone,
+        customerName: customerName,
+        guarantorName: guarantorName,
+        guarantorPhone: guarantorPhone,
         totalAmount: netSubtotal,
         discountAmount: discount,
         payableAmount: payableAmount,
@@ -1373,17 +1391,90 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
             )}
           </div>
 
-          {/* Customer Phone Input */}
-          <div className="form-group">
-            <label className="form-label">Customer Phone</label>
-            <input 
-              type="text" 
-              className="form-control" 
-              value={customerPhone} 
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="e.g. 01712345678"
-            />
-          </div>
+          {/* Customer & Guarantor Details Section */}
+          {(() => {
+            const hasRentalItems = cart.some(item => item.saleType === 'RENT');
+            return (
+              <div style={{
+                background: hasRentalItems ? 'linear-gradient(135deg, rgba(124, 58, 237, 0.05) 0%, rgba(79, 70, 229, 0.05) 100%)' : '#ffffff',
+                border: hasRentalItems ? '1.5px solid #c4b5fd' : '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '10px 12px',
+                marginBottom: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: 800, color: hasRentalItems ? '#6d28d9' : 'var(--text-primary)', textTransform: 'uppercase' }}>
+                    {hasRentalItems ? '📋 Rental Customer & Guarantor' : '👤 Customer Information'}
+                  </span>
+                  {hasRentalItems && (
+                    <span style={{ fontSize: '10px', background: '#ede9fe', color: '#6d28d9', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                      Required for Rent
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '2px' }}>Customer Name</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={customerName} 
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Customer Name"
+                      style={{ height: '32px', fontSize: '12px' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '2px' }}>Customer Phone</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={customerPhone} 
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="017xxxxxxxx"
+                      style={{ height: '32px', fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+
+                {hasRentalItems && (
+                  <div style={{ borderTop: '1px dashed #ddd6fe', paddingTop: '8px', marginTop: '2px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#7c3aed', marginBottom: '6px' }}>
+                      Guarantor / Jamanotkari (জামানতকারী)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: '10.5px', marginBottom: '2px' }}>Guarantor Name</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={guarantorName} 
+                          onChange={(e) => setGuarantorName(e.target.value)}
+                          placeholder="Guarantor Name"
+                          style={{ height: '32px', fontSize: '12px' }}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: '10.5px', marginBottom: '2px' }}>Guarantor Phone</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={guarantorPhone} 
+                          onChange={(e) => setGuarantorPhone(e.target.value)}
+                          placeholder="018xxxxxxxx"
+                          style={{ height: '32px', fontSize: '12px' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Discount Section (Only when customer is making a purchase/exchange) */}
           {(!isPureReturn) && (

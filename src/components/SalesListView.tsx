@@ -126,13 +126,16 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
     if (!q) return true;
     const matchesId = s.id.toLowerCase().includes(q) || (s.invoice_code && s.invoice_code.toLowerCase().includes(q));
     const matchesMethod = (s.payment_method || '').toLowerCase().includes(q);
-    const matchesPhone = s.customer_phone && s.customer_phone.includes(q);
+    const matchesCustomer = (s.customer_phone && s.customer_phone.includes(q)) ||
+                            (s.customer_name && s.customer_name.toLowerCase().includes(q)) ||
+                            (s.guarantor_name && s.guarantor_name.toLowerCase().includes(q)) ||
+                            (s.guarantor_phone && s.guarantor_phone.includes(q));
     const matchesBarcode = s.sale_items?.some((si: any) => 
       si.variant?.barcode?.toLowerCase().includes(q) ||
       si.variant?.sku?.toLowerCase().includes(q) ||
       si.variant?.product?.name?.toLowerCase().includes(q)
     );
-    return matchesId || matchesMethod || matchesPhone || matchesBarcode;
+    return matchesId || matchesMethod || matchesCustomer || matchesBarcode;
   });
 
   const paginatedSales = isRestricted
@@ -145,6 +148,9 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
     saleDate: selectedSale.sale_date,
     paymentMethod: selectedSale.payment_method,
     customerPhone: selectedSale.customer_phone,
+    customerName: selectedSale.customer_name,
+    guarantorName: selectedSale.guarantor_name,
+    guarantorPhone: selectedSale.guarantor_phone,
     totalAmount: selectedSale.total_amount,
     discountAmount: selectedSale.discount_amount || 0,
     payableAmount: selectedSale.payable_amount,
@@ -190,7 +196,17 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
       columns: [
         { header: 'Invoice Code', key: 'id', format: (v, row) => row.invoice_code || (v ? v.toUpperCase().substring(0, 8) : '-') },
         { header: 'Date', key: 'sale_date', format: (v) => formatDateDDMMYYYY(v) },
-        { header: 'Customer Phone', key: 'customer_phone', format: (v) => v || 'Walk-in' },
+        { 
+          header: 'Customer', 
+          key: 'customer_name', 
+          format: (_, row) => {
+            const parts = [];
+            if (row.customer_name) parts.push(row.customer_name);
+            if (row.customer_phone) parts.push(`Ph: ${row.customer_phone}`);
+            if (row.guarantor_name) parts.push(`Guarantor: ${row.guarantor_name} (${row.guarantor_phone || '-'})`);
+            return parts.length > 0 ? parts.join('\n') : 'Walk-in';
+          } 
+        },
         { 
           header: 'Barcode', 
           key: 'sale_items', 
@@ -309,7 +325,7 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                 <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
                 <th>Invoice Code</th>
                 <th>Date</th>
-                <th>Customer Phone</th>
+                <th>Customer</th>
                 <th>Product Code</th>
                 <th>Barcode</th>
                 <th>Payment Mode</th>
@@ -343,8 +359,22 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatDateDDMMYYYY(s.sale_date)}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>{formatTimeAMPM(s.sale_date)}</div>
                     </td>
-                    <td style={{ fontWeight: s.customer_phone ? 600 : 'normal', fontSize: '12px', color: s.customer_phone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                      {s.customer_phone ? `📞 ${s.customer_phone}` : '-'}
+                    <td style={{ fontSize: '12px' }}>
+                      {s.customer_name && (
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{s.customer_name}</div>
+                      )}
+                      {s.customer_phone ? (
+                        <div style={{ fontSize: '11px', color: s.customer_name ? 'var(--text-muted)' : 'var(--text-primary)', fontWeight: s.customer_name ? 500 : 600, marginTop: s.customer_name ? '1px' : '0' }}>
+                          📞 {s.customer_phone}
+                        </div>
+                      ) : !s.customer_name ? (
+                        <span style={{ color: 'var(--text-muted)' }}>Walk-in</span>
+                      ) : null}
+                      {s.guarantor_name && (
+                        <div style={{ fontSize: '10px', color: 'var(--color-primary)', marginTop: '2px', fontWeight: 600 }}>
+                          G: {s.guarantor_name} {s.guarantor_phone ? `(${s.guarantor_phone})` : ''}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>

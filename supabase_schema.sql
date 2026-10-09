@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS public.sales (
     payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH', -- 'CASH', 'CARD', 'MOBILE_PAY'
     received_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     change_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    customer_phone VARCHAR(50),
+    customer_name VARCHAR(255),
+    guarantor_name VARCHAR(255),
+    guarantor_phone VARCHAR(50),
     created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

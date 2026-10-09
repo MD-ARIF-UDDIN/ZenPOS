@@ -147,6 +147,10 @@ export const RentalsView: React.FC<RentalsViewProps> = ({ onRefreshStats, userRo
       item.variant?.sku?.toLowerCase().includes(q) ||
       item.variant?.barcode?.toLowerCase().includes(q) ||
       item.sale?.customer_phone?.includes(q) ||
+      item.sale?.customer_name?.toLowerCase().includes(q) ||
+      item.sale?.guarantor_name?.toLowerCase().includes(q) ||
+      item.sale?.guarantor_phone?.includes(q) ||
+      item.sale?.invoice_code?.toLowerCase().includes(q) ||
       item.sale?.id?.toLowerCase().includes(q)
     );
 
@@ -174,7 +178,8 @@ export const RentalsView: React.FC<RentalsViewProps> = ({ onRefreshStats, userRo
       ],
       columns: [
         { header: 'Invoice Code', key: 'sale', format: (_, row) => row.sale?.invoice_code || '-' },
-        { header: 'Customer Phone', key: 'sale', format: (_, row) => row.sale?.customer_phone || 'Walk-in' },
+        { header: 'Customer', key: 'sale', format: (_, row) => [row.sale?.customer_name, row.sale?.customer_phone].filter(Boolean).join(' - ') || 'Walk-in' },
+        { header: 'Guarantor (জামানতকারী)', key: 'sale', format: (_, row) => [row.sale?.guarantor_name, row.sale?.guarantor_phone].filter(Boolean).join(' - ') || '-' },
         { header: 'Product Item', key: 'variant', format: (_, row) => row.variant?.product?.name || '-' },
         { header: 'SKU / Barcode', key: 'variant', format: (_, row) => row.variant?.sku || row.variant?.barcode || '-' },
         { header: 'Rental Date', key: 'sale', format: (_, row) => formatDateDDMMYYYY(row.sale?.sale_date) },
@@ -348,9 +353,10 @@ export const RentalsView: React.FC<RentalsViewProps> = ({ onRefreshStats, userRo
                 <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
                 <th>Invoice</th>
                 <th>Rented Product</th>
-                <th>Product Code</th>
+                <th>Code</th>
                 <th>Barcode</th>
-                <th>Customer Phone</th>
+                <th>Customer</th>
+                <th>Guarantor (জামানতকারী)</th>
                 <th>Rent Date</th>
                 <th>Expected Return</th>
                 <th style={{ textAlign: 'right' }}>Rent Fee</th>
@@ -430,11 +436,29 @@ export const RentalsView: React.FC<RentalsViewProps> = ({ onRefreshStats, userRo
                         </span>
                       </td>
                       <td>
-                        {r.sale?.customer_phone ? (
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            <Phone size={11} style={{ color: 'var(--text-muted)' }} />
+                        <div style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-primary)' }}>
+                          {r.sale?.customer_name || 'Walk-in'}
+                        </div>
+                        {r.sale?.customer_phone && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '1px' }}>
+                            <Phone size={10} style={{ color: 'var(--text-muted)' }} />
                             {r.sale.customer_phone}
-                          </span>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {r.sale?.guarantor_name || r.sale?.guarantor_phone ? (
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '12px', color: '#6d28d9' }}>
+                              {r.sale?.guarantor_name || '-'}
+                            </div>
+                            {r.sale?.guarantor_phone && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '1px' }}>
+                                <Phone size={10} style={{ color: 'var(--text-muted)' }} />
+                                {r.sale.guarantor_phone}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>-</span>
                         )}
@@ -605,9 +629,19 @@ export const RentalsView: React.FC<RentalsViewProps> = ({ onRefreshStats, userRo
                 <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                   {returnModalItem.variant?.size} / {returnModalItem.variant?.color} · SKU: {returnModalItem.variant?.sku}
                 </div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  Invoice: #{returnModalItem.sale?.id?.substring(0, 8).toUpperCase()} {returnModalItem.sale?.customer_phone ? `· 📞 ${returnModalItem.sale.customer_phone}` : ''}
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Invoice: #{returnModalItem.sale?.invoice_code || returnModalItem.sale?.id?.substring(0, 8).toUpperCase()}
                 </div>
+                {(returnModalItem.sale?.customer_name || returnModalItem.sale?.customer_phone) && (
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 600 }}>
+                    👤 Customer: {[returnModalItem.sale?.customer_name, returnModalItem.sale?.customer_phone].filter(Boolean).join(' · 📞 ')}
+                  </div>
+                )}
+                {(returnModalItem.sale?.guarantor_name || returnModalItem.sale?.guarantor_phone) && (
+                  <div style={{ fontSize: '11.5px', color: '#6d28d9', marginTop: '2px', fontWeight: 600 }}>
+                    🛡️ Guarantor (জামানতকারী): {[returnModalItem.sale?.guarantor_name, returnModalItem.sale?.guarantor_phone].filter(Boolean).join(' · 📞 ')}
+                  </div>
+                )}
               </div>
 
               {/* Outstanding Due Banner */}

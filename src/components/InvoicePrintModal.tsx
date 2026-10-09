@@ -24,6 +24,9 @@ export interface InvoiceData {
   saleDate: string;
   paymentMethod: string;
   customerPhone?: string;
+  customerName?: string;
+  guarantorName?: string;
+  guarantorPhone?: string;
   totalAmount: number;
   discountAmount: number;
   payableAmount: number;
@@ -488,10 +491,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     <span>INV: <strong>${data.invoiceCode || data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
                     <span>${formatDateDDMMYYYY(data.saleDate || new Date())}</span>
                   </div>
-                  ${settings.showCustomerPhone && data.customerPhone ? `
+                  ${settings.showCustomerPhone && (data.customerPhone || data.customerName) ? `
                     <div class="meta-row">
                       <span>Customer:</span>
-                      <span><strong>${data.customerPhone}</strong></span>
+                      <span><strong>${[data.customerName, data.customerPhone].filter(Boolean).join(' - ')}</strong></span>
+                    </div>
+                  ` : ''}
+                  ${data.guarantorName || data.guarantorPhone ? `
+                    <div class="meta-row">
+                      <span>Guarantor:</span>
+                      <span><strong>${[data.guarantorName, data.guarantorPhone].filter(Boolean).join(' - ')}</strong></span>
                     </div>
                   ` : ''}
                 </div>
@@ -1168,10 +1177,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ data, onCl
                     <span>INV: <strong>{data.invoiceCode || data.invoiceId.toUpperCase().substring(0, 8)}</strong></span>
                     <span>{formatDateDDMMYYYY(data.saleDate || new Date())}</span>
                   </div>
-                  {settings.showCustomerPhone && data.customerPhone && (
+                  {settings.showCustomerPhone && (data.customerPhone || data.customerName) && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                       <span>Customer:</span>
-                      <span><strong>{data.customerPhone}</strong></span>
+                      <span><strong>{[data.customerName, data.customerPhone].filter(Boolean).join(' - ')}</strong></span>
+                    </div>
+                  )}
+                  {(data.guarantorName || data.guarantorPhone) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                      <span>Guarantor:</span>
+                      <span><strong>{[data.guarantorName, data.guarantorPhone].filter(Boolean).join(' - ')}</strong></span>
                     </div>
                   )}
                 </div>

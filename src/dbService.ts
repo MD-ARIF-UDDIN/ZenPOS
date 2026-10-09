@@ -409,7 +409,10 @@ export const dbService = {
     discount: number,
     paymentMethod: string,
     receivedAmount: number,
-    customerPhone: string = ''
+    customerPhone: string = '',
+    customerName: string = '',
+    guarantorName: string = '',
+    guarantorPhone: string = ''
   ) {
     const salesSubtotal = cart
       .filter(item => item.saleType !== 'RETURN')
@@ -437,6 +440,9 @@ export const dbService = {
         received_amount: receivedAmount,
         change_amount: changeAmount,
         customer_phone: customerPhone,
+        customer_name: customerName,
+        guarantor_name: guarantorName,
+        guarantor_phone: guarantorPhone,
         due_amount: dueAmount
       })
       .select()
@@ -519,6 +525,9 @@ export const dbService = {
       payment_method: string;
       received_amount: number;
       customer_phone?: string;
+      customer_name?: string;
+      guarantor_name?: string;
+      guarantor_phone?: string;
     },
     items: {
       id?: string;
@@ -539,18 +548,24 @@ export const dbService = {
     const dueAmount = saleData.payment_method === 'DUE' ? payableAmount : (receivedAmount < payableAmount ? payableAmount - receivedAmount : 0);
 
     // 2. Update sale header
+    const updatePayload: any = {
+      total_amount: subtotal,
+      discount_amount: saleData.discount_amount || 0,
+      payable_amount: payableAmount,
+      payment_method: saleData.payment_method,
+      received_amount: receivedAmount,
+      change_amount: changeAmount,
+      customer_phone: saleData.customer_phone || '',
+      due_amount: dueAmount
+    };
+
+    if (saleData.customer_name !== undefined) updatePayload.customer_name = saleData.customer_name;
+    if (saleData.guarantor_name !== undefined) updatePayload.guarantor_name = saleData.guarantor_name;
+    if (saleData.guarantor_phone !== undefined) updatePayload.guarantor_phone = saleData.guarantor_phone;
+
     const { error: saleError } = await supabase
       .from('sales')
-      .update({
-        total_amount: subtotal,
-        discount_amount: saleData.discount_amount || 0,
-        payable_amount: payableAmount,
-        payment_method: saleData.payment_method,
-        received_amount: receivedAmount,
-        change_amount: changeAmount,
-        customer_phone: saleData.customer_phone || '',
-        due_amount: dueAmount
-      })
+      .update(updatePayload)
       .eq('id', saleId);
 
     if (saleError) throw saleError;
