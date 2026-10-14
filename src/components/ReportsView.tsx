@@ -1,16 +1,40 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { Calendar, FileDown, Search } from 'lucide-react';
+import { Calendar, FileDown, Search, Eye } from 'lucide-react';
 import { Pagination } from './Pagination';
+import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 import { exportTableToPdf } from '../utils/pdfExport';
-import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { formatDateDDMMYYYY, formatTimeAMPM } from '../utils/dateUtils';
 import { isAdminRole } from '../roleUtils';
 
 type DateFilter = 'today' | 'week' | 'month' | 'month_select' | 'custom' | 'all';
-type ReportType = 'BY_DATE' | 'BY_PRODUCT' | 'BY_CATEGORY';
+type ReportType = 'BY_DATE' | 'BY_PRODUCT' | 'BY_CATEGORY' | 'BY_INVOICE';
 type ProductSortKey = 'sales' | 'profit' | 'units' | 'stock' | 'name';
 type CategorySortKey = 'sales' | 'profit' | 'units' | 'stock' | 'products' | 'name';
+type InvoiceSortKey = 'date_desc' | 'date_asc' | 'sales_desc' | 'profit_desc' | 'due_desc';
+
+export interface InvoiceStat {
+  saleId: string;
+  invoiceCode: string;
+  saleDate: string;
+  customerName: string;
+  customerPhone: string;
+  paymentMethod: string;
+  itemsCount: number;
+  unitsSold: number;
+  unitsReturned: number;
+  grossSales: number;
+  discount: number;
+  payable: number;
+  paidAmount: number;
+  dueAmount: number;
+  refundAmount: number;
+  totalCogs: number;
+  profit: number;
+  marginPct: number;
+  rawSale: any;
+}
 
 interface ReportsViewProps {
   userRole?: string;
@@ -87,6 +111,61 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   // Category report search & sorting
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categorySortBy, setCategorySortBy] = useState<CategorySortKey>('sales');
+
+  // Invoice report search & sorting & filter
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+  const [invoiceSortBy, setInvoiceSortBy] = useState<InvoiceSortKey>('date_desc');
+  const [invoicePaymentFilter, setInvoicePaymentFilter] = useState<string>('ALL');
+
+  // Selected invoice for detail/print modal
+  const [selectedSaleForModal, setSelectedSaleForModal] = useState<any | null>(null);
+  const [modalSaleItems, setModalSaleItems] = useState<any[]>([]);
+  const [modalItemsLoading, setModalItemsLoading] = useState(false);
+
+  const handleOpenInvoiceModal = async (rawSale: any) => {
+    setSelectedSaleForModal(rawSale);
+    try {
+      setModalItemsLoading(true);
+      const items = await dbService.getSaleItems(rawSale.id);
+      setModalSaleItems(items);
+    } catch (e) {
+      console.error('Failed to load sale details for modal', e);
+      setModalSaleItems(rawSale.sale_items || []);
+    } finally {
+      setModalItemsLoading(false);
+    }
+  };
+
+  const invoiceModalData: InvoiceData | null = selectedSaleForModal ? {
+    invoiceId: selectedSaleForModal.id,
+    invoiceCode: selectedSaleForModal.invoice_code,
+    saleDate: selectedSaleForModal.sale_date,
+    paymentMethod: selectedSaleForModal.payment_method,
+    customerPhone: selectedSaleForModal.customer_phone,
+    customerName: selectedSaleForModal.customer_name,
+    guarantorName: selectedSaleForModal.guarantor_name,
+    guarantorPhone: selectedSaleForModal.guarantor_phone,
+    totalAmount: selectedSaleForModal.total_amount,
+    discountAmount: selectedSaleForModal.discount_amount || 0,
+    payableAmount: selectedSaleForModal.payable_amount,
+    receivedAmount: selectedSaleForModal.received_amount !== undefined && selectedSaleForModal.received_amount !== null ? selectedSaleForModal.received_amount : selectedSaleForModal.payable_amount,
+    dueAmount: selectedSaleForModal.due_amount || 0,
+    changeAmount: selectedSaleForModal.change_amount || 0,
+    items: modalSaleItems.map(item => ({
+      id: item.id,
+      name: item.variant?.product?.name || 'Item',
+      size: item.variant?.size,
+      color: item.variant?.color,
+      sku: item.variant?.sku,
+      barcode: item.variant?.barcode,
+      code: item.variant?.sku || item.variant?.barcode,
+      quantity: item.quantity,
+      unitPrice: item.unit_price || (Math.abs(item.total_price) / (item.quantity || 1)),
+      totalPrice: item.total_price,
+      saleType: item.sale_type || (item.is_returned ? 'RETURN' : 'SALE'),
+      returnDate: item.return_date || null
+    }))
+  } : null;
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -737,6 +816,126 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     });
   }, [categoryStatsList, categorySearchQuery, categorySortBy]);
 
+  // ----------------------------------------------------
+  // 4. INVOICE-WISE BREAKDOWN DATA
+  // ----------------------------------------------------
+  const invoiceStatsList = useMemo(() => {
+    const itemsMap = new Map<string, any[]>();
+    filteredItems.forEach(si => {
+      if (si.sale_id) {
+        const arr = itemsMap.get(si.sale_id) || [];
+        arr.push(si);
+        itemsMap.set(si.sale_id, arr);
+      }
+    });
+
+    return filteredSales.map(s => {
+      const saleId = s.id;
+      const invoiceCode = s.invoice_code || (saleId ? saleId.substring(0, 8).toUpperCase() : 'UNKNOWN');
+      const saleDate = s.sale_date;
+      const customerName = s.customer_name || '';
+      const customerPhone = s.customer_phone || '';
+      const paymentMethod = s.payment_method || 'CASH';
+
+      const items = s.sale_items && s.sale_items.length > 0 ? s.sale_items : (itemsMap.get(saleId) || []);
+
+      let unitsSold = 0;
+      let unitsReturned = 0;
+      let calculatedGross = 0;
+      let invoiceCogs = 0;
+
+      items.forEach((si: any) => {
+        const isReturn = si.sale_type === 'RETURN' || si.is_returned;
+        const isRent = si.sale_type === 'RENT';
+        const v = variantsMap.get(si.variant_id) || si.variant;
+        const unitCost = isRent ? 0 : Number(v?.purchase_price || 0);
+        const qty = Number(si.quantity || 0);
+        const itemAmount = Math.abs(Number(si.total_price || (qty * Number(si.unit_price || 0)) || 0));
+
+        if (isReturn) {
+          unitsReturned += qty;
+          invoiceCogs -= qty * unitCost;
+        } else {
+          unitsSold += qty;
+          calculatedGross += itemAmount;
+          invoiceCogs += qty * unitCost;
+        }
+      });
+
+      const grossSales = calculatedGross > 0 ? calculatedGross : Number(s.total_amount || 0);
+      const discount = Number(s.discount_amount || 0);
+      const payable = Number(s.payable_amount || 0);
+      const paidAmount = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
+      const dueAmount = Math.max(0, payable - paidAmount);
+      const refundAmount = payable < 0 ? Math.abs(payable) : 0;
+      const profit = (paidAmount - refundAmount) - invoiceCogs;
+      const marginPct = paidAmount > 0 ? (profit / paidAmount) * 100 : 0;
+
+      return {
+        saleId,
+        invoiceCode,
+        saleDate,
+        customerName,
+        customerPhone,
+        paymentMethod,
+        itemsCount: items.length,
+        unitsSold,
+        unitsReturned,
+        grossSales,
+        discount,
+        payable,
+        paidAmount,
+        dueAmount,
+        refundAmount,
+        totalCogs: invoiceCogs,
+        profit,
+        marginPct,
+        rawSale: s
+      };
+    });
+  }, [filteredSales, filteredItems, variantsMap]);
+
+  // Filtered & Sorted Invoice Stats
+  const filteredInvoiceStats = useMemo(() => {
+    let result = invoiceStatsList;
+    const q = invoiceSearchQuery.toLowerCase().trim();
+    if (q) {
+      result = result.filter(inv => {
+        const matchesCode = inv.invoiceCode.toLowerCase().includes(q) || inv.saleId.toLowerCase().includes(q);
+        const matchesCustomer = inv.customerName.toLowerCase().includes(q) || inv.customerPhone.includes(q);
+        const matchesMethod = inv.paymentMethod.toLowerCase().includes(q);
+        const items = inv.rawSale?.sale_items || [];
+        const matchesItem = items.some((si: any) => {
+          const v = variantsMap.get(si.variant_id) || si.variant;
+          return v?.barcode?.toLowerCase().includes(q) ||
+                 v?.sku?.toLowerCase().includes(q) ||
+                 v?.product?.name?.toLowerCase().includes(q);
+        });
+        return matchesCode || matchesCustomer || matchesMethod || matchesItem;
+      });
+    }
+
+    if (invoicePaymentFilter !== 'ALL') {
+      result = result.filter(inv => inv.paymentMethod.toUpperCase() === invoicePaymentFilter.toUpperCase());
+    }
+
+    return [...result].sort((a, b) => {
+      switch (invoiceSortBy) {
+        case 'date_asc':
+          return new Date(a.saleDate).getTime() - new Date(b.saleDate).getTime();
+        case 'sales_desc':
+          return b.grossSales - a.grossSales;
+        case 'profit_desc':
+          return b.profit - a.profit;
+        case 'due_desc':
+          return b.dueAmount - a.dueAmount;
+        case 'date_desc':
+        default:
+          return new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime();
+      }
+    });
+  }, [invoiceStatsList, invoiceSearchQuery, invoicePaymentFilter, invoiceSortBy, variantsMap]);
+
   // PDF Export Handler
   const handleDownloadPdf = () => {
     const dateRangeLabel = filter === 'all' 
@@ -751,7 +950,44 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       ? `${startDate || 'Start'} to ${endDate || 'End'}` 
       : 'Today';
 
-    if (reportType === 'BY_CATEGORY') {
+    if (reportType === 'BY_INVOICE') {
+      const totalInvGross = filteredInvoiceStats.reduce((sum, inv) => sum + inv.grossSales, 0);
+      const totalInvDiscount = filteredInvoiceStats.reduce((sum, inv) => sum + inv.discount, 0);
+      const totalInvPayable = filteredInvoiceStats.reduce((sum, inv) => sum + inv.payable, 0);
+      const totalInvPaid = filteredInvoiceStats.reduce((sum, inv) => sum + inv.paidAmount, 0);
+      const totalInvDue = Math.max(0, totalInvPayable - totalInvPaid);
+      const totalInvCogs = filteredInvoiceStats.reduce((sum, inv) => sum + inv.totalCogs, 0);
+      const totalInvProfit = filteredInvoiceStats.reduce((sum, inv) => sum + inv.profit, 0);
+
+      exportTableToPdf({
+        moduleName: 'Reports (By Invoice)',
+        title: 'Invoice Sales & Profitability Report',
+        dateRange: dateRangeLabel,
+        summaryCards: [
+          { label: 'Total Invoices', value: String(filteredInvoiceStats.length) },
+          { label: 'Gross Sales', value: `Tk ${formatAmount(totalInvGross)}` },
+          { label: 'Discount', value: `Tk ${formatAmount(totalInvDiscount)}` },
+          { label: 'Total Payable', value: `Tk ${formatAmount(totalInvPayable)}` },
+          { label: 'Paid Amount', value: `Tk ${formatAmount(totalInvPaid)}` },
+          { label: 'Due Amount', value: `Tk ${formatAmount(totalInvDue)}` },
+          { label: 'Cost of Goods (COGS)', value: `Tk ${formatAmount(totalInvCogs)}` },
+          { label: 'Invoice Profit', value: `Tk ${formatAmount(totalInvProfit)}` }
+        ],
+        columns: [
+          { header: 'Invoice #', key: 'invoiceCode', format: (v) => `#${v}` },
+          { header: 'Date', key: 'saleDate', format: (v) => formatDateDDMMYYYY(v) },
+          { header: 'Customer', key: 'customerName', format: (v, r) => v || r?.customerPhone || 'Walk-in' },
+          { header: 'Method', key: 'paymentMethod', align: 'center' },
+          { header: 'Units (Sold/Ret)', key: 'unitsSold', align: 'center', format: (v, r) => `${v} / ${r?.unitsReturned || 0}` },
+          { header: 'Gross Sales', key: 'grossSales', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Discount', key: 'discount', align: 'right', format: (v) => v > 0 ? `Tk ${formatAmount(v)}` : '-' },
+          { header: 'Total Payable', key: 'payable', align: 'right', format: (v, r) => `Tk ${formatAmount(v)} (Paid: ${formatAmount(r?.paidAmount || 0)})` },
+          { header: 'Cost of Goods (COGS)', key: 'totalCogs', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
+          { header: 'Profit', key: 'profit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` }
+        ],
+        data: filteredInvoiceStats
+      });
+    } else if (reportType === 'BY_CATEGORY') {
       const totalUnitsSold = filteredCategoryStats.reduce((sum, c) => sum + c.netUnitsSold, 0);
       const totalCatSales = filteredCategoryStats.reduce((sum, c) => sum + c.netSales, 0);
       const totalCatDiscount = filteredCategoryStats.reduce((sum, c) => sum + c.discount, 0);
@@ -883,7 +1119,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
               onClick={handleDownloadPdf}
               className="btn btn-secondary btn-sm"
               style={{ padding: '0 10px', height: '28px', fontSize: '11.5px', gap: '5px', fontWeight: 700 }}
-              title={`Download ${reportType === 'BY_CATEGORY' ? 'Category' : reportType === 'BY_PRODUCT' ? 'Product' : 'Date-wise'} PDF Report`}
+              title={`Download ${reportType === 'BY_INVOICE' ? 'Invoice-wise' : reportType === 'BY_CATEGORY' ? 'Category' : reportType === 'BY_PRODUCT' ? 'Product' : 'Date-wise'} PDF Report`}
             >
               <FileDown size={13} />
               <span>Download PDF</span>
@@ -1195,7 +1431,79 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           >
             By Category
           </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => { setReportType('BY_INVOICE'); setCurrentPage(1); }}
+            style={{
+              padding: '6px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+              borderRadius: '4px',
+              border: 'none',
+              background: reportType === 'BY_INVOICE' ? 'var(--color-primary)' : 'transparent',
+              color: reportType === 'BY_INVOICE' ? '#fff' : 'var(--text-secondary)',
+              cursor: 'pointer'
+            }}
+          >
+            By Invoice
+          </button>
         </div>
+
+        {reportType === 'BY_INVOICE' && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', flex: '1 1 360px', justifyContent: 'flex-end' }}>
+            <div style={{ position: 'relative', minWidth: '180px', flex: '1 1 180px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Search invoice #, customer, method..."
+                value={invoiceSearchQuery}
+                onChange={(e) => {
+                  setInvoiceSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ paddingLeft: '32px', height: '34px', fontSize: '12px', width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Method:</span>
+              <select
+                className="form-control"
+                value={invoicePaymentFilter}
+                onChange={(e) => {
+                  setInvoicePaymentFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ height: '34px', fontSize: '11.5px', fontWeight: 600, width: 'auto', paddingRight: '20px' }}
+              >
+                <option value="ALL">All Methods</option>
+                <option value="CASH">Cash</option>
+                <option value="BKASH">bKash</option>
+                <option value="CARD">Card</option>
+                <option value="NAGAD">Nagad</option>
+                <option value="DUE">Due</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Sort:</span>
+              <select
+                className="form-control"
+                value={invoiceSortBy}
+                onChange={(e) => setInvoiceSortBy(e.target.value as InvoiceSortKey)}
+                style={{ height: '34px', fontSize: '11.5px', fontWeight: 600, width: 'auto', paddingRight: '24px' }}
+              >
+                <option value="date_desc">Latest First</option>
+                <option value="date_asc">Oldest First</option>
+                <option value="sales_desc">Highest Sales</option>
+                <option value="profit_desc">Highest Profit</option>
+                <option value="due_desc">Highest Due</option>
+              </select>
+            </div>
+          </div>
+        )}
 
         {reportType === 'BY_PRODUCT' && (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', flex: '1 1 320px', justifyContent: 'flex-end' }}>
@@ -1841,6 +2149,270 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
             </>
           )}
         </div>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* 4. BY INVOICE PERFORMANCE BREAKDOWN TABLE */}
+      {/* ---------------------------------------------------------------- */}
+      {reportType === 'BY_INVOICE' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>Invoice-wise Sales & Profitability Breakdown</h3>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {filteredInvoiceStats.length} invoices
+            </span>
+          </div>
+
+          {filteredInvoiceStats.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
+              No invoices found matching your filter or search criteria.
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div className="table-container reports-desktop-table">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>Sl.</th>
+                      <th>Invoice #</th>
+                      <th>Date & Time</th>
+                      <th>Customer</th>
+                      <th style={{ textAlign: 'center' }}>Method</th>
+                      <th style={{ textAlign: 'center' }}>Units</th>
+                      <th style={{ textAlign: 'right' }}>Total Sales</th>
+                      <th style={{ textAlign: 'right' }}>Discount</th>
+                      <th style={{ textAlign: 'right' }}>Total Payable</th>
+                      <th style={{ textAlign: 'right' }}>Cost of Goods (COGS)</th>
+                      <th style={{ textAlign: 'right' }}>Profit</th>
+                      <th style={{ textAlign: 'center', width: '60px' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredInvoiceStats
+                      .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                      .map((inv, idx) => (
+                      <tr key={inv.saleId}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {(currentPage - 1) * pageSize + idx + 1}
+                        </td>
+                        <td style={{ fontWeight: 800, fontSize: '12px', color: 'var(--color-primary)' }}>
+                          <span style={{ 
+                            background: '#eff6ff', 
+                            color: '#1d4ed8', 
+                            padding: '2px 6px', 
+                            borderRadius: '4px',
+                            border: '1px solid #bfdbfe',
+                            letterSpacing: '0.5px'
+                          }}>
+                            #{inv.invoiceCode}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: '12px', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 700 }}>{formatDateDDMMYYYY(inv.saleDate)}</div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>{formatTimeAMPM(inv.saleDate)}</div>
+                        </td>
+                        <td style={{ fontSize: '12px' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {inv.customerName || 'Walk-in'}
+                          </div>
+                          {inv.customerPhone && (
+                            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                              {inv.customerPhone}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span style={{ 
+                            fontSize: '11px', 
+                            fontWeight: 700, 
+                            padding: '2px 8px', 
+                            borderRadius: '4px',
+                            background: inv.paymentMethod === 'CASH' ? '#ecfdf5' : inv.paymentMethod === 'DUE' ? '#fef2f2' : '#f0f9ff',
+                            color: inv.paymentMethod === 'CASH' ? '#047857' : inv.paymentMethod === 'DUE' ? '#b91c1c' : '#0369a1',
+                            border: inv.paymentMethod === 'CASH' ? '1px solid #a7f3d0' : inv.paymentMethod === 'DUE' ? '1px solid #fecaca' : '1px solid #bae6fd'
+                          }}>
+                            {inv.paymentMethod}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 600, fontSize: '11.5px' }}>
+                          <span style={{ color: 'var(--color-primary)' }}>{inv.unitsSold} sold</span>
+                          {inv.unitsReturned > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '3px' }}>· {inv.unitsReturned} ret</span>}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          ৳{formatAmount(inv.grossSales)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: inv.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+                          {inv.discount > 0 ? `৳${formatAmount(inv.discount)}` : '-'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                          <div style={{ color: 'var(--color-primary)' }}>৳{formatAmount(inv.payable)}</div>
+                          <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
+                            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(inv.paidAmount)}</span>
+                            {inv.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(inv.dueAmount)}</span>}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          ৳{formatAmount(inv.totalCogs)}
+                        </td>
+                        <td style={{ 
+                          textAlign: 'right', 
+                          fontWeight: 800, 
+                          color: inv.profit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' 
+                        }}>
+                          ৳{formatAmount(inv.profit)}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleOpenInvoiceModal(inv.rawSale)}
+                            style={{ padding: '4px 8px', height: '26px' }}
+                            title="View / Print Invoice Receipt"
+                          >
+                            <Eye size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card View for Invoices */}
+              <div className="reports-mobile-cards">
+                {filteredInvoiceStats
+                  .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                  .map((inv, idx) => (
+                  <div 
+                    key={inv.saleId}
+                    className="card"
+                    style={{
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                            #{(currentPage - 1) * pageSize + idx + 1}
+                          </span>
+                          <span style={{ 
+                            background: '#eff6ff', 
+                            color: '#1d4ed8', 
+                            padding: '1px 6px', 
+                            borderRadius: '4px',
+                            fontSize: '11.5px',
+                            fontWeight: 800,
+                            border: '1px solid #bfdbfe'
+                          }}>
+                            #{inv.invoiceCode}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {formatDateDDMMYYYY(inv.saleDate)} {formatTimeAMPM(inv.saleDate)}
+                          </span>
+                        </div>
+                        <div style={{ marginTop: '3px', fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                          {inv.customerName || 'Walk-in'}
+                          {inv.customerPhone && <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '6px' }}>({inv.customerPhone})</span>}
+                        </div>
+                      </div>
+                      <span style={{ 
+                        fontSize: '10.5px', 
+                        fontWeight: 700, 
+                        padding: '2px 6px', 
+                        borderRadius: '4px',
+                        background: inv.paymentMethod === 'CASH' ? '#ecfdf5' : inv.paymentMethod === 'DUE' ? '#fef2f2' : '#f0f9ff',
+                        color: inv.paymentMethod === 'CASH' ? '#047857' : inv.paymentMethod === 'DUE' ? '#b91c1c' : '#0369a1'
+                      }}>
+                        {inv.paymentMethod}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px' }}>
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Sales</div>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>৳{formatAmount(inv.grossSales)}</div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Discount</div>
+                        <div style={{ fontWeight: 700, color: inv.discount > 0 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
+                          {inv.discount > 0 ? `৳${formatAmount(inv.discount)}` : '-'}
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Payable</div>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>৳{formatAmount(inv.payable)}</div>
+                        <div style={{ fontSize: '9.5px', fontWeight: 600, marginTop: '2px' }}>
+                          <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(inv.paidAmount)}</span>
+                          {inv.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(inv.dueAmount)}</span>}
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Cost of Goods (COGS)</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>৳{formatAmount(inv.totalCogs)}</div>
+                      </div>
+
+                      <div style={{ 
+                        background: inv.profit >= 0 ? '#ecfdf5' : '#fef2f2', 
+                        padding: '6px 8px', 
+                        borderRadius: '4px',
+                        border: inv.profit >= 0 ? '1px solid #d1fae5' : '1px solid #fee2e2',
+                        gridColumn: 'span 2',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div>
+                          <div style={{ fontSize: '10px', color: inv.profit >= 0 ? '#065f46' : '#991b1b', fontWeight: 600 }}>Invoice Profit</div>
+                          <div style={{ fontWeight: 800, color: inv.profit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                            ৳{formatAmount(inv.profit)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleOpenInvoiceModal(inv.rawSale)}
+                          style={{ padding: '3px 8px', fontSize: '11px', height: '26px', gap: '4px' }}
+                        >
+                          <Eye size={12} />
+                          <span>View Receipt</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Pagination 
+                currentPage={currentPage}
+                totalItems={filteredInvoiceStats.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Invoice Details / Print Modal */}
+      {selectedSaleForModal && !modalItemsLoading && invoiceModalData && (
+        <InvoicePrintModal
+          data={invoiceModalData}
+          onClose={() => {
+            setSelectedSaleForModal(null);
+            setModalSaleItems([]);
+          }}
+        />
       )}
 
     </div>
