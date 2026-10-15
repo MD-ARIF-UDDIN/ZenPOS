@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
 import { createClient } from '@supabase/supabase-js';
+import { fallbackFetch } from '../fallback-fetch';
 import { Plus, Trash2, Edit2, Lock, Unlock, ShieldCheck, UserCheck, Phone, Eye, EyeOff, FileDown } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { STAFF_ROLES, ALL_APP_MODULES, DEFAULT_ROLE_PERMISSIONS, formatRoleName, cleanPhoneInput, isAdminRole, type AppModuleId } from '../roleUtils';
@@ -128,8 +129,11 @@ export const UsersView: React.FC<UsersViewProps> = ({ userRole }) => {
       const secondaryClient = createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
           persistSession: false,
-          autoRefreshToken: false
-        }
+          autoRefreshToken: false,
+        },
+        global: {
+          fetch: fallbackFetch,
+        },
       });
 
       let userId = 'user_' + Date.now();
