@@ -12,6 +12,7 @@ interface CacheStore {
   users?: { data: any[]; timestamp: number };
   stock_ledger?: { data: any[]; timestamp: number };
   sale_items_detailed?: { data: any[]; timestamp: number };
+  payment_collections?: { data: any[]; timestamp: number };
 }
 
 const CACHE_TTL_MS = 60 * 1000; // 1 minute fresh cache
@@ -500,7 +501,22 @@ export const dbService = {
         }
       }
       
-      clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger']);
+      if (receivedAmount > 0) {
+        try {
+          await this.recordPaymentCollection({
+            sale_id: sale.id,
+            amount: receivedAmount,
+            payment_method: paymentMethod,
+            collection_type: 'INITIAL',
+            collection_date: sale.sale_date || new Date().toISOString(),
+            notes: 'Initial sale payment'
+          });
+        } catch (e) {
+          console.warn('Failed to record initial payment collection:', e);
+        }
+      }
+
+      clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger', 'payment_collections' as any]);
       return { id: sale.id, invoice_code: sale.invoice_code || invoiceCode };
     }
     throw new Error('Failed to checkout sale');
@@ -1010,11 +1026,90 @@ export const dbService = {
             payment_method: paymentCollection.paymentMethod || currentSale.payment_method
           })
           .eq('id', paymentCollection.saleId);
+
+        try {
+          await this.recordPaymentCollection({
+            sale_id: paymentCollection.saleId,
+            amount: paymentCollection.collectAmount,
+            payment_method: paymentCollection.paymentMethod || currentSale.payment_method || 'CASH',
+            collection_type: 'DUE_COLLECTION',
+            collection_date: new Date().toISOString(),
+            notes: 'Rental return due payment collected'
+          });
+        } catch (e) {
+          console.warn('Failed to record rental return payment collection:', e);
+        }
       }
     }
 
-    clearPosCache(['variants', 'stock_ledger', 'sale_items_detailed', 'sales']);
+    clearPosCache(['variants', 'stock_ledger', 'sale_items_detailed', 'sales', 'payment_collections' as any]);
     return data;
+  },
+
+  async markMultipleRentalsReturned(
+    items: Array<{ saleItemId: string; variantId: string; currentStock: number }>,
+    paymentCollection?: {
+      saleId: string;
+      collectAmount: number;
+      paymentMethod: string;
+    }
+  ) {
+    if (!items || items.length === 0) return;
+
+    for (const item of items) {
+      await supabase
+        .from('sale_items')
+        .update({ is_returned: true })
+        .eq('id', item.saleItemId);
+
+      await supabase
+        .from('product_variants')
+        .update({ stock_quantity: item.currentStock + 1 })
+        .eq('id', item.variantId);
+
+      await supabase.from('stock_ledger').insert({
+        variant_id: item.variantId,
+        quantity_change: 1,
+        transaction_type: 'RETURN',
+        notes: 'Rental item returned to inventory'
+      });
+    }
+
+    if (paymentCollection && paymentCollection.collectAmount > 0) {
+      const { data: currentSale, error: fetchErr } = await supabase
+        .from('sales')
+        .select('*')
+        .eq('id', paymentCollection.saleId)
+        .single();
+
+      if (!fetchErr && currentSale) {
+        const newReceived = Number(currentSale.received_amount || 0) + paymentCollection.collectAmount;
+        const newDue = Math.max(0, Number(currentSale.due_amount || 0) - paymentCollection.collectAmount);
+        await supabase
+          .from('sales')
+          .update({
+            received_amount: newReceived,
+            due_amount: newDue,
+            payment_method: paymentCollection.paymentMethod || currentSale.payment_method
+          })
+          .eq('id', paymentCollection.saleId);
+
+        try {
+          await this.recordPaymentCollection({
+            sale_id: paymentCollection.saleId,
+            amount: paymentCollection.collectAmount,
+            payment_method: paymentCollection.paymentMethod || currentSale.payment_method || 'CASH',
+            collection_type: 'DUE_COLLECTION',
+            collection_date: new Date().toISOString(),
+            notes: 'Rental return due payment collected'
+          });
+        } catch (e) {
+          console.warn('Failed to record rental return payment collection:', e);
+        }
+      }
+    }
+
+    clearPosCache(['variants', 'stock_ledger', 'sale_items_detailed', 'sales', 'payment_collections' as any]);
   },
 
   async collectRentalDuePayment(saleId: string, collectAmount: number, paymentMethod: string) {
@@ -1038,7 +1133,21 @@ export const dbService = {
       .select()
       .single();
     if (error) throw error;
-    clearPosCache(['sales', 'sale_items_detailed']);
+
+    try {
+      await this.recordPaymentCollection({
+        sale_id: saleId,
+        amount: collectAmount,
+        payment_method: paymentMethod || currentSale.payment_method || 'CASH',
+        collection_type: 'DUE_COLLECTION',
+        collection_date: new Date().toISOString(),
+        notes: 'Rental due payment collected'
+      });
+    } catch (e) {
+      console.warn('Failed to record due payment collection:', e);
+    }
+
+    clearPosCache(['sales', 'sale_items_detailed', 'payment_collections' as any]);
     return data;
   },
 
@@ -1083,6 +1192,106 @@ export const dbService = {
     if (error) throw error;
     const result = data || [];
     cache.sale_items_detailed = { data: result, timestamp: now };
+    return result;
+  },
+
+  async recordPaymentCollection(item: {
+    sale_id: string;
+    amount: number;
+    payment_method: string;
+    collection_type?: 'INITIAL' | 'DUE_COLLECTION';
+    collection_date?: string;
+    notes?: string;
+  }) {
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : `pc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    const fullItem = {
+      id,
+      ...item,
+      collection_type: item.collection_type || 'DUE_COLLECTION',
+      collection_date: item.collection_date || new Date().toISOString(),
+      created_at: new Date().toISOString()
+    };
+
+    // 1. Try inserting to Supabase table
+    try {
+      const { data, error } = await supabase
+        .from('payment_collections')
+        .insert({
+          sale_id: fullItem.sale_id,
+          amount: fullItem.amount,
+          payment_method: fullItem.payment_method,
+          collection_type: fullItem.collection_type,
+          collection_date: fullItem.collection_date,
+          notes: fullItem.notes || null
+        })
+        .select()
+        .single();
+      if (!error && data) {
+        fullItem.id = data.id;
+      }
+    } catch (e) {
+      console.warn('payment_collections Supabase insert skipped (falling back to local cache):', e);
+    }
+
+    // 2. Always persist in local storage
+    try {
+      const local = JSON.parse(localStorage.getItem('zenpos_payment_collections') || '[]');
+      local.push(fullItem);
+      localStorage.setItem('zenpos_payment_collections', JSON.stringify(local));
+    } catch (e) {
+      console.warn('Failed to update local payment_collections:', e);
+    }
+
+    clearPosCache(['sales', 'payment_collections' as any]);
+    return fullItem;
+  },
+
+  async getPaymentCollections(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && (cache as any).payment_collections && (now - (cache as any).payment_collections.timestamp < CACHE_TTL_MS)) {
+      return (cache as any).payment_collections.data;
+    }
+
+    let remoteList: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('payment_collections')
+        .select('*')
+        .order('collection_date', { ascending: false });
+      if (!error && data) {
+        remoteList = data;
+      }
+    } catch {
+      // Table might not exist yet
+    }
+
+    let localList: any[] = [];
+    try {
+      localList = JSON.parse(localStorage.getItem('zenpos_payment_collections') || '[]');
+    } catch {
+      localList = [];
+    }
+
+    const map = new Map<string, any>();
+    remoteList.forEach(it => {
+      const k = it.id || `${it.sale_id}_${it.collection_date}_${it.amount}`;
+      map.set(k, it);
+    });
+    localList.forEach(it => {
+      const k = it.id || `${it.sale_id}_${it.collection_date}_${it.amount}`;
+      if (!map.has(k)) {
+        map.set(k, it);
+      }
+    });
+
+    const result = Array.from(map.values()).sort((a, b) =>
+      new Date(b.collection_date).getTime() - new Date(a.collection_date).getTime()
+    );
+
+    (cache as any).payment_collections = { data: result, timestamp: now };
     return result;
   },
 

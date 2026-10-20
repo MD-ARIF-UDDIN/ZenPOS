@@ -299,3 +299,19 @@ CREATE TRIGGER trg_after_sale_item_update
 AFTER UPDATE ON public.sale_items
 FOR EACH ROW EXECUTE FUNCTION public.after_sale_item_update();
 
+-- 7. Payment Collections (tracks initial checkout payments and subsequent due collections with actual collection timestamps)
+CREATE TABLE IF NOT EXISTS public.payment_collections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sale_id UUID REFERENCES public.sales(id) ON DELETE CASCADE,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH',
+    collection_type VARCHAR(50) NOT NULL DEFAULT 'DUE_COLLECTION', -- 'INITIAL', 'DUE_COLLECTION'
+    collection_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.payment_collections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read/write for all on payment_collections" ON public.payment_collections FOR ALL USING (true);
+
+

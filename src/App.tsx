@@ -5,6 +5,7 @@ import { POSView } from './components/POSView';
 import { ProductsView } from './components/ProductsView';
 import { StockView } from './components/StockView';
 import { ReportsView } from './components/ReportsView';
+import { InventoryReportView } from './components/InventoryReportView';
 import { UsersView } from './components/UsersView';
 import { SalesListView } from './components/SalesListView';
 import { ReturnsListView } from './components/ReturnsListView';
@@ -205,6 +206,7 @@ function App() {
     if (path.startsWith('/rentals')) return 'Rentals Management';
     if (path.startsWith('/expenses')) return 'Operating Expense Ledger';
     if (path.startsWith('/users')) return 'Staff & Terminal Profiles';
+    if (path === '/reports/inventory') return 'Inventory Analytics';
     if (path.startsWith('/reports')) return 'Business Analytics';
     return 'POS Checkout';
   };
@@ -383,6 +385,7 @@ function App() {
             <Route path="/expenses" element={hasModuleAccess(userPermissions, userRole, 'expenses') ? <ExpensesView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
             <Route path="/users" element={hasModuleAccess(userPermissions, userRole, 'users') ? <UsersView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
             <Route path="/reports" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <ReportsView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+            <Route path="/reports/inventory" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <InventoryReportView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
             <Route path="*" element={<Navigate to={getDefaultPath()} replace />} />
           </Routes>
         </main>
