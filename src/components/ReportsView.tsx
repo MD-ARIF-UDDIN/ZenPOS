@@ -302,7 +302,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
 
   let totalActualCashRefunded = 0;
   let totalPayable = 0;
-  let totalLegacyPaid = 0;
+  let totalPaid = 0;
 
   filteredSales.forEach(s => {
     const payable = Number(s.payable_amount || 0);
@@ -310,17 +310,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       totalActualCashRefunded += Math.abs(payable);
     } else {
       totalPayable += payable;
-      if (!collectionsBySaleId.has(s.id)) {
-        const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
-        totalLegacyPaid += paid;
-      }
+      const due = Number(s.due_amount || 0);
+      const paid = Math.max(0, payable - due);
+      totalPaid += paid;
     }
   });
 
-  const totalCollectionsPaid = filteredCollections.reduce((sum, pc) => sum + Number(pc.amount || 0), 0);
-  const totalPaid = totalLegacyPaid + totalCollectionsPaid;
-
-  const totalDue = Math.max(0, totalPayable - totalPaid);
+  const totalDue = useMemo(() => filteredSales.reduce((sum, s) => sum + Number(s.due_amount || 0), 0), [filteredSales]);
   const totalProfit = (totalPaid - totalActualCashRefunded) - totalCogs;
   const totalExpenses = useMemo(() => filteredExpenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0), [filteredExpenses]);
   const totalStockUnits = useMemo(() => variants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0), [variants]);
@@ -419,24 +415,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         stat.refundAmount += Math.abs(payable);
       } else {
         stat.payable += payable;
-        if (!collectionsBySaleId.has(s.id)) {
-          const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
-          stat.paidAmount += paid;
-          stat.dueAmount += Math.max(0, payable - paid);
-        } else {
-          stat.dueAmount += Number(s.due_amount || 0);
-        }
+        const due = Number(s.due_amount || 0);
+        const paid = Math.max(0, payable - due);
+        stat.paidAmount += paid;
+        stat.dueAmount += due;
       }
     });
 
-    // Attribute payment collections to the date they were received
+    // Attribute due collections to track dueCollected
     paymentCollections.forEach(pc => {
       if (!filterByDate(pc.collection_date)) return;
       const key = getDateKey(pc.collection_date);
       if (!key) return;
       const stat = getOrCreateDateStat(key);
       const amt = Number(pc.amount || 0);
-      stat.paidAmount += amt;
       if (pc.collection_type === 'DUE_COLLECTION') {
         stat.dueCollected += amt;
       }
@@ -591,10 +583,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         const itemPayable = totalItemAmount - itemDiscount;
         const s = si.sale;
         const salePayable = Number(s?.payable_amount || 0);
-        const salePaid = Number(s?.received_amount !== undefined && s?.received_amount !== null ? s.received_amount : s?.payable_amount || 0);
-        const paidRatio = salePayable > 0 ? Math.min(1, Math.max(0, salePaid / salePayable)) : 1;
-        const itemPaid = itemPayable * paidRatio;
-        const itemDue = Math.max(0, itemPayable - itemPaid);
+        const saleDue = Number(s?.due_amount || 0);
+        const itemDue = salePayable > 0 && saleDue > 0 ? (itemPayable / salePayable) * saleDue : 0;
+        const itemPaid = Math.max(0, itemPayable - itemDue);
 
         entry.paidAmount += itemPaid;
         entry.dueAmount += itemDue;
@@ -786,10 +777,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         const itemPayable = totalItemAmount - itemDiscount;
         const s = si.sale;
         const salePayable = Number(s?.payable_amount || 0);
-        const salePaid = Number(s?.received_amount !== undefined && s?.received_amount !== null ? s.received_amount : s?.payable_amount || 0);
-        const paidRatio = salePayable > 0 ? Math.min(1, Math.max(0, salePaid / salePayable)) : 1;
-        const itemPaid = itemPayable * paidRatio;
-        const itemDue = Math.max(0, itemPayable - itemPaid);
+        const saleDue = Number(s?.due_amount || 0);
+        const itemDue = salePayable > 0 && saleDue > 0 ? (itemPayable / salePayable) * saleDue : 0;
+        const itemPaid = Math.max(0, itemPayable - itemDue);
 
         entry.paidAmount += itemPaid;
         entry.dueAmount += itemDue;
@@ -913,8 +903,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const grossSales = calculatedGross > 0 ? calculatedGross : Number(s.total_amount || 0);
       const discount = Number(s.discount_amount || 0);
       const payable = Number(s.payable_amount || 0);
-      const paidAmount = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
-      const dueAmount = Math.max(0, payable - paidAmount);
+      const dueAmount = Number(s.due_amount || 0);
+      const paidAmount = Math.max(0, payable - dueAmount);
       const refundAmount = payable < 0 ? Math.abs(payable) : 0;
       const profit = (paidAmount - refundAmount) - invoiceCogs;
       const marginPct = paidAmount > 0 ? (profit / paidAmount) * 100 : 0;
@@ -1003,7 +993,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const totalInvDiscount = filteredInvoiceStats.reduce((sum, inv) => sum + inv.discount, 0);
       const totalInvPayable = filteredInvoiceStats.reduce((sum, inv) => sum + inv.payable, 0);
       const totalInvPaid = filteredInvoiceStats.reduce((sum, inv) => sum + inv.paidAmount, 0);
-      const totalInvDue = Math.max(0, totalInvPayable - totalInvPaid);
+      const totalInvDue = filteredInvoiceStats.reduce((sum, inv) => sum + inv.dueAmount, 0);
       const totalInvCogs = filteredInvoiceStats.reduce((sum, inv) => sum + inv.totalCogs, 0);
       const totalInvProfit = filteredInvoiceStats.reduce((sum, inv) => sum + inv.profit, 0);
 
@@ -1114,7 +1104,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const totalDiscountAll = dateStatsList.reduce((sum, d) => sum + d.discount, 0);
       const totalPayableAll = dateStatsList.reduce((sum, d) => sum + d.payable, 0);
       const totalPaidAll = dateStatsList.reduce((sum, d) => sum + d.paidAmount, 0);
-      const totalDueAll = Math.max(0, totalPayableAll - totalPaidAll);
+      const totalDueAll = dateStatsList.reduce((sum, d) => sum + d.dueAmount, 0);
       const totalRefundAll = dateStatsList.reduce((sum, d) => sum + d.refundAmount, 0);
       const totalProfitAll = dateStatsList.reduce((sum, d) => sum + d.productProfit, 0);
       const totalExpensesAll = dateStatsList.reduce((sum, d) => sum + d.expenses, 0);

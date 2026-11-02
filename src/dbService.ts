@@ -530,7 +530,17 @@ export const dbService = {
 
     if (error) throw error;
 
-    clearPosCache(['sales', 'variants', 'products', 'sale_items_detailed', 'stock_ledger']);
+    // Delete payment_collections for this sale
+    try {
+      await supabase
+        .from('payment_collections')
+        .delete()
+        .eq('sale_id', saleId);
+    } catch (e) {
+      console.warn('Failed to delete payment_collections for sale:', e);
+    }
+
+    clearPosCache(['sales', 'variants', 'products', 'sale_items_detailed', 'stock_ledger', 'payment_collections' as any]);
     return true;
   },
 
@@ -656,7 +666,29 @@ export const dbService = {
       if (insErr) throw insErr;
     }
 
-    clearPosCache(['sales', 'variants', 'products', 'sale_items_detailed', 'stock_ledger']);
+    // Sync payment_collections for this updated sale
+    try {
+      const { data: existingColl } = await supabase
+        .from('payment_collections')
+        .select('id')
+        .eq('sale_id', saleId)
+        .eq('collection_type', 'INITIAL')
+        .limit(1);
+
+      if (existingColl && existingColl.length > 0) {
+        await supabase
+          .from('payment_collections')
+          .update({
+            amount: receivedAmount,
+            payment_method: saleData.payment_method
+          })
+          .eq('id', existingColl[0].id);
+      }
+    } catch (e) {
+      console.warn('Failed to sync payment_collections in updateSale:', e);
+    }
+
+    clearPosCache(['sales', 'variants', 'products', 'sale_items_detailed', 'stock_ledger', 'payment_collections' as any]);
     return true;
   },
 
