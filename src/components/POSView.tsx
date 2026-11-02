@@ -219,6 +219,27 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
     updatePaymentRow(idx, 'amount', remaining);
   };
 
+  const syncCashWithPayable = (targetPayable: number) => {
+    const payable = Math.max(0, targetPayable);
+    setPaymentRows(prev => {
+      const cashIdx = prev.findIndex(r => r.method === 'CASH');
+      if (cashIdx !== -1) {
+        const otherTotal = prev.reduce((acc, r, i) => i !== cashIdx ? acc + (r.amount || 0) : acc, 0);
+        const newCash = Math.max(0, payable - otherTotal);
+        return prev.map((r, i) => i === cashIdx ? { ...r, amount: newCash } : r);
+      } else if (prev.length === 1) {
+        return [{ ...prev[0], amount: payable }];
+      }
+      return prev;
+    });
+  };
+
+  const handleDiscountChange = (newDiscount: number) => {
+    const validDiscount = Math.max(0, Number(newDiscount) || 0);
+    setDiscount(validDiscount);
+    syncCashWithPayable(netSubtotal - validDiscount);
+  };
+
   const handleNewSale = () => {
     clearCart();
     setCheckoutSuccess(null);
@@ -964,7 +985,10 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                                     placeholder="0"
                                     onChange={(e) => {
                                       const disc = Number(e.target.value) || 0;
-                                      updateCartPrice(item.variant.id, Math.max(0, origPrice - disc), 'RETURN');
+                                      const newPrice = Math.max(0, origPrice - disc);
+                                      updateCartPrice(item.variant.id, newPrice, 'RETURN');
+                                      const newSubtotal = netSubtotal - (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
                                     }}
                                     style={{ width: '60px', height: '24px', padding: '1px 4px', fontSize: '11.5px', textAlign: 'center', borderColor: '#fecdd3' }}
                                   />
@@ -972,21 +996,36 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                                 <div style={{ display: 'flex', gap: '2px' }}>
                                   <button
                                     type="button"
-                                    onClick={() => updateCartPrice(item.variant.id, Math.round(origPrice * 0.85), 'RETURN')}
+                                    onClick={() => {
+                                      const newPrice = Math.round(origPrice * 0.85);
+                                      updateCartPrice(item.variant.id, newPrice, 'RETURN');
+                                      const newSubtotal = netSubtotal - (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
+                                    }}
                                     style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 700, borderRadius: '3px', border: '1px solid #fecdd3', background: itemDiscount === Math.round(origPrice * 0.15) && itemDiscount > 0 ? '#e11d48' : '#fff', color: itemDiscount === Math.round(origPrice * 0.15) && itemDiscount > 0 ? '#fff' : '#e11d48', cursor: 'pointer' }}
                                   >
                                     15%
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => updateCartPrice(item.variant.id, Math.round(origPrice * 0.90), 'RETURN')}
+                                    onClick={() => {
+                                      const newPrice = Math.round(origPrice * 0.90);
+                                      updateCartPrice(item.variant.id, newPrice, 'RETURN');
+                                      const newSubtotal = netSubtotal - (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
+                                    }}
                                     style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 700, borderRadius: '3px', border: '1px solid #e5e7eb', background: itemDiscount === Math.round(origPrice * 0.10) && itemDiscount > 0 ? '#4b5563' : '#fff', color: itemDiscount === Math.round(origPrice * 0.10) && itemDiscount > 0 ? '#fff' : '#4b5563', cursor: 'pointer' }}
                                   >
                                     10%
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => updateCartPrice(item.variant.id, Math.round(origPrice * 0.80), 'RETURN')}
+                                    onClick={() => {
+                                      const newPrice = Math.round(origPrice * 0.80);
+                                      updateCartPrice(item.variant.id, newPrice, 'RETURN');
+                                      const newSubtotal = netSubtotal - (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
+                                    }}
                                     style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 700, borderRadius: '3px', border: '1px solid #e5e7eb', background: itemDiscount === Math.round(origPrice * 0.20) && itemDiscount > 0 ? '#4b5563' : '#fff', color: itemDiscount === Math.round(origPrice * 0.20) && itemDiscount > 0 ? '#fff' : '#4b5563', cursor: 'pointer' }}
                                   >
                                     20%
@@ -994,7 +1033,11 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                                   {itemDiscount > 0 && (
                                     <button
                                       type="button"
-                                      onClick={() => updateCartPrice(item.variant.id, origPrice, 'RETURN')}
+                                      onClick={() => {
+                                        updateCartPrice(item.variant.id, origPrice, 'RETURN');
+                                        const newSubtotal = netSubtotal - (origPrice - itemPrice) * item.quantity;
+                                        syncCashWithPayable(newSubtotal - discount);
+                                      }}
                                       style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 600, borderRadius: '3px', border: '1px solid #d1d5db', background: '#f3f4f6', color: '#6b7280', cursor: 'pointer' }}
                                       title="Clear Discount"
                                     >
@@ -1240,7 +1283,10 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                                     placeholder="0"
                                     onChange={(e) => {
                                       const disc = Number(e.target.value) || 0;
-                                      updateCartPrice(item.variant.id, Math.max(0, origPrice - disc), item.saleType);
+                                      const newPrice = Math.max(0, origPrice - disc);
+                                      updateCartPrice(item.variant.id, newPrice, item.saleType);
+                                      const newSubtotal = netSubtotal + (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
                                     }}
                                     style={{ width: '60px', height: '24px', padding: '1px 4px', fontSize: '11.5px', textAlign: 'center', borderColor: '#bfdbfe' }}
                                   />
@@ -1248,21 +1294,36 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                                 <div style={{ display: 'flex', gap: '2px' }}>
                                   <button
                                     type="button"
-                                    onClick={() => updateCartPrice(item.variant.id, Math.round(origPrice * 0.85), item.saleType)}
+                                    onClick={() => {
+                                      const newPrice = Math.round(origPrice * 0.85);
+                                      updateCartPrice(item.variant.id, newPrice, item.saleType);
+                                      const newSubtotal = netSubtotal + (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
+                                    }}
                                     style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 700, borderRadius: '3px', border: '1px solid #bfdbfe', background: itemDiscount === Math.round(origPrice * 0.15) && itemDiscount > 0 ? '#2563eb' : '#fff', color: itemDiscount === Math.round(origPrice * 0.15) && itemDiscount > 0 ? '#fff' : '#2563eb', cursor: 'pointer' }}
                                   >
                                     15%
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => updateCartPrice(item.variant.id, Math.round(origPrice * 0.90), item.saleType)}
+                                    onClick={() => {
+                                      const newPrice = Math.round(origPrice * 0.90);
+                                      updateCartPrice(item.variant.id, newPrice, item.saleType);
+                                      const newSubtotal = netSubtotal + (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
+                                    }}
                                     style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 700, borderRadius: '3px', border: '1px solid #e5e7eb', background: itemDiscount === Math.round(origPrice * 0.10) && itemDiscount > 0 ? '#4b5563' : '#fff', color: itemDiscount === Math.round(origPrice * 0.10) && itemDiscount > 0 ? '#fff' : '#4b5563', cursor: 'pointer' }}
                                   >
                                     10%
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => updateCartPrice(item.variant.id, Math.round(origPrice * 0.80), item.saleType)}
+                                    onClick={() => {
+                                      const newPrice = Math.round(origPrice * 0.80);
+                                      updateCartPrice(item.variant.id, newPrice, item.saleType);
+                                      const newSubtotal = netSubtotal + (newPrice - itemPrice) * item.quantity;
+                                      syncCashWithPayable(newSubtotal - discount);
+                                    }}
                                     style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 700, borderRadius: '3px', border: '1px solid #e5e7eb', background: itemDiscount === Math.round(origPrice * 0.20) && itemDiscount > 0 ? '#4b5563' : '#fff', color: itemDiscount === Math.round(origPrice * 0.20) && itemDiscount > 0 ? '#fff' : '#4b5563', cursor: 'pointer' }}
                                   >
                                     20%
@@ -1270,7 +1331,11 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                                   {itemDiscount > 0 && (
                                     <button
                                       type="button"
-                                      onClick={() => updateCartPrice(item.variant.id, origPrice, item.saleType)}
+                                      onClick={() => {
+                                        updateCartPrice(item.variant.id, origPrice, item.saleType);
+                                        const newSubtotal = netSubtotal + (origPrice - itemPrice) * item.quantity;
+                                        syncCashWithPayable(newSubtotal - discount);
+                                      }}
                                       style={{ padding: '1px 3px', fontSize: '9px', fontWeight: 600, borderRadius: '3px', border: '1px solid #d1d5db', background: '#f3f4f6', color: '#6b7280', cursor: 'pointer' }}
                                       title="Clear Discount"
                                     >
@@ -1484,7 +1549,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                 <div style={{ display: 'flex', gap: '4px' }}>
                   <button
                     type="button"
-                    onClick={() => setDiscount(Math.round(Math.max(0, netSubtotal) * 0.15))}
+                    onClick={() => handleDiscountChange(Math.round(Math.max(0, netSubtotal) * 0.15))}
                     className="btn btn-secondary btn-sm"
                     style={{
                       padding: '2px 6px',
@@ -1500,24 +1565,38 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDiscount(Math.round(Math.max(0, netSubtotal) * 0.10))}
+                    onClick={() => handleDiscountChange(Math.round(Math.max(0, netSubtotal) * 0.10))}
                     className="btn btn-secondary btn-sm"
-                    style={{ padding: '2px 6px', fontSize: '10.5px', fontWeight: 700 }}
+                    style={{
+                      padding: '2px 6px',
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      backgroundColor: discount === Math.round(Math.max(0, netSubtotal) * 0.10) && discount > 0 ? '#ffe4e6' : 'var(--bg-primary)',
+                      color: discount === Math.round(Math.max(0, netSubtotal) * 0.10) && discount > 0 ? '#e11d48' : 'var(--text-secondary)',
+                      borderColor: discount === Math.round(Math.max(0, netSubtotal) * 0.10) && discount > 0 ? '#fda4af' : 'var(--border-color)',
+                    }}
                   >
                     10%
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDiscount(Math.round(Math.max(0, netSubtotal) * 0.20))}
+                    onClick={() => handleDiscountChange(Math.round(Math.max(0, netSubtotal) * 0.20))}
                     className="btn btn-secondary btn-sm"
-                    style={{ padding: '2px 6px', fontSize: '10.5px', fontWeight: 700 }}
+                    style={{
+                      padding: '2px 6px',
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      backgroundColor: discount === Math.round(Math.max(0, netSubtotal) * 0.20) && discount > 0 ? '#ffe4e6' : 'var(--bg-primary)',
+                      color: discount === Math.round(Math.max(0, netSubtotal) * 0.20) && discount > 0 ? '#e11d48' : 'var(--text-secondary)',
+                      borderColor: discount === Math.round(Math.max(0, netSubtotal) * 0.20) && discount > 0 ? '#fda4af' : 'var(--border-color)',
+                    }}
                   >
                     20%
                   </button>
                   {discount > 0 && (
                     <button
                       type="button"
-                      onClick={() => setDiscount(0)}
+                      onClick={() => handleDiscountChange(0)}
                       className="btn btn-secondary btn-sm"
                       style={{ padding: '2px 6px', fontSize: '10.5px', color: 'var(--color-danger)' }}
                       title="Clear Discount"
@@ -1533,7 +1612,7 @@ export const POSView: React.FC<POSViewProps> = ({ onRefreshStats }) => {
                   type="number" 
                   className="form-control" 
                   value={discount || ''} 
-                  onChange={(e) => setDiscount(Number(e.target.value))}
+                  onChange={(e) => handleDiscountChange(e.target.value === '' ? 0 : Number(e.target.value))}
                   placeholder="0.00"
                   style={{ paddingLeft: '22px' }}
                 />

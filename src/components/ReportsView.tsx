@@ -213,8 +213,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         return date >= sevenDaysAgo;
       case 'month':
-        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        return date >= thirtyDaysAgo;
+        return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
       case 'month_select':
         if (selectedMonth) {
           const [yStr, mStr] = selectedMonth.split('-');

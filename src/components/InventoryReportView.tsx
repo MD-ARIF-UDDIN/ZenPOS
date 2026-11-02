@@ -136,7 +136,7 @@ export const InventoryReportView: React.FC<InventoryReportViewProps> = ({ userRo
       case 'week':
         return date >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       case 'month':
-        return date >= new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
       case 'month_select':
         if (selectedMonth) {
           const [yStr, mStr] = selectedMonth.split('-');
