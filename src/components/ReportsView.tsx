@@ -294,7 +294,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     return paymentCollections.filter(pc => filterByDate(pc.collection_date));
   }, [paymentCollections, filter, selectedMonth, startDate, endDate]);
 
-  const totalDueCollectedAll = useMemo(() => {
+  // Total cash collected across all payment collections in this period
+  const totalCashCollected = useMemo(() => {
+    return filteredCollections.reduce((sum, pc) => sum + Number(pc.amount || 0), 0);
+  }, [filteredCollections]);
+
+  // Initial cash payments made at checkout
+  const salesCashCollected = useMemo(() => {
+    return filteredCollections
+      .filter(pc => pc.collection_type !== 'DUE_COLLECTION')
+      .reduce((sum, pc) => sum + Number(pc.amount || 0), 0);
+  }, [filteredCollections]);
+
+  // Due collections received during this period
+  const dueCashCollected = useMemo(() => {
     return filteredCollections
       .filter(pc => pc.collection_type === 'DUE_COLLECTION')
       .reduce((sum, pc) => sum + Number(pc.amount || 0), 0);
@@ -369,7 +382,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         discount: number;
         payable: number;
         paidAmount: number;
+        salesCashCollected: number;
         dueCollected: number;
+        totalCashCollected: number;
         dueAmount: number;
         refundAmount: number;
         totalCogs: number;
@@ -392,7 +407,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           discount: 0,
           payable: 0,
           paidAmount: 0,
+          salesCashCollected: 0,
           dueCollected: 0,
+          totalCashCollected: 0,
           dueAmount: 0,
           refundAmount: 0,
           totalCogs: 0,
@@ -408,6 +425,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const key = getDateKey(s.sale_date);
       if (!key) return;
       const stat = getOrCreateDateStat(key);
+
       const payable = Number(s.payable_amount || 0);
       stat.orderCount += 1;
       stat.discount += Number(s.discount_amount || 0);
@@ -422,7 +440,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       }
     });
 
-    // Attribute due collections to track dueCollected
+    // Attribute collections to track daily cash collected and due collected
     paymentCollections.forEach(pc => {
       if (!filterByDate(pc.collection_date)) return;
       const key = getDateKey(pc.collection_date);
@@ -431,7 +449,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const amt = Number(pc.amount || 0);
       if (pc.collection_type === 'DUE_COLLECTION') {
         stat.dueCollected += amt;
+      } else {
+        stat.salesCashCollected += amt;
       }
+      stat.totalCashCollected += amt;
     });
 
     filteredItems.forEach(si => {
@@ -1103,7 +1124,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       const totalNetSalesAll = dateStatsList.reduce((sum, d) => sum + d.netSales, 0);
       const totalDiscountAll = dateStatsList.reduce((sum, d) => sum + d.discount, 0);
       const totalPayableAll = dateStatsList.reduce((sum, d) => sum + d.payable, 0);
-      const totalPaidAll = dateStatsList.reduce((sum, d) => sum + d.paidAmount, 0);
+      const totalCashCollectedAll = dateStatsList.reduce((sum, d) => sum + (d.totalCashCollected > 0 ? d.totalCashCollected : d.paidAmount), 0);
       const totalDueAll = dateStatsList.reduce((sum, d) => sum + d.dueAmount, 0);
       const totalRefundAll = dateStatsList.reduce((sum, d) => sum + d.refundAmount, 0);
       const totalProfitAll = dateStatsList.reduce((sum, d) => sum + d.productProfit, 0);
@@ -1118,7 +1139,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { label: 'Total Sales', value: `Tk ${formatAmount(totalNetSalesAll)}` },
           { label: 'Total Discount', value: `Tk ${formatAmount(totalDiscountAll)}` },
           { label: 'Total Payable', value: `Tk ${formatAmount(totalPayableAll)}` },
-          { label: 'Paid Amount', value: `Tk ${formatAmount(totalPaidAll)}` },
+          { label: 'Cash Collected', value: `Tk ${formatAmount(totalCashCollectedAll)}` },
           { label: 'Due Amount', value: `Tk ${formatAmount(totalDueAll)}` },
           { label: 'Cash Refunded', value: `Tk ${formatAmount(totalRefundAll)}` },
           { label: 'Product Profit', value: `Tk ${formatAmount(totalProfitAll)}` },
@@ -1132,7 +1153,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           { header: 'Units (Sold/Ret)', key: 'unitsSold', align: 'center', format: (v, r) => `${v} / ${r?.unitsReturned || 0}` },
           { header: 'Total Sales', key: 'netSales', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Discount', key: 'discount', align: 'right', format: (v) => v > 0 ? `Tk ${formatAmount(v)}` : '-' },
-          { header: 'Total Payable', key: 'payable', align: 'right', format: (v, r) => `Tk ${formatAmount(v)} (Paid: ${formatAmount(r?.paidAmount || 0)})` },
+          { 
+            header: 'Total Payable', 
+            key: 'payable', 
+            align: 'right', 
+            format: (v, r) => {
+              const paidTotal = r?.totalCashCollected > 0 ? r.totalCashCollected : (r?.paidAmount || 0);
+              const dueCol = r?.dueCollected || 0;
+              return `Tk ${formatAmount(v)} (Paid: ${formatAmount(paidTotal)}${dueCol > 0 ? ` [Sales: ${formatAmount(r?.salesCashCollected || 0)} + Due: ${formatAmount(dueCol)}]` : ''})`;
+            }
+          },
           { header: 'Cash Refund', key: 'refundAmount', align: 'right', format: (v) => v > 0 ? `-Tk ${formatAmount(v)}` : '-' },
           { header: 'Product Profit', key: 'productProfit', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
           { header: 'Expenses', key: 'expenses', align: 'right', format: (v) => `Tk ${formatAmount(v)}` },
@@ -1364,12 +1394,23 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           </div>
           <div style={{ fontSize: '10.5px', marginTop: '3px', fontWeight: 600 }}>
             <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(totalPaid)}</span>
-            {totalDueCollectedAll > 0 && (
-              <span style={{ color: '#0284c7', marginLeft: '4px' }} title="Due collected during selected date period">
-                (incl. ৳{formatAmount(totalDueCollectedAll)} due)
-              </span>
-            )}
             {totalDue > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '6px' }}>· Due: ৳{formatAmount(totalDue)}</span>}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px 14px' }}>
+          <div className="card-title">Cash Collected</div>
+          <div className="card-value" style={{ color: 'var(--color-success)', fontWeight: 800 }}>
+            ৳{formatAmount(totalCashCollected)}
+          </div>
+          <div style={{ fontSize: '10.5px', marginTop: '3px', fontWeight: 600, color: 'var(--text-muted)' }}>
+            {dueCashCollected > 0 ? (
+              <span style={{ color: '#0284c7' }} title="Cash from sales + dues collected">
+                Sales: ৳{formatAmount(salesCashCollected)} + Due: ৳{formatAmount(dueCashCollected)}
+              </span>
+            ) : (
+              <span>From {filteredCollections.length} payment{filteredCollections.length === 1 ? '' : 's'}</span>
+            )}
           </div>
         </div>
 
@@ -1679,10 +1720,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         <td style={{ textAlign: 'right', fontWeight: 700 }}>
                           <div style={{ color: 'var(--color-primary)' }}>৳{formatAmount(item.payable)}</div>
                           <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '2px' }}>
-                            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(item.paidAmount)}</span>
+                            <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(item.totalCashCollected > 0 ? item.totalCashCollected : item.paidAmount)}</span>
                             {item.dueCollected > 0 && (
                               <span style={{ color: '#0284c7', marginLeft: '4px' }} title="Due collected on this date">
-                                (incl. ৳{formatAmount(item.dueCollected)} due)
+                                (Sales: ৳{formatAmount(item.salesCashCollected)} + Due: ৳{formatAmount(item.dueCollected)})
                               </span>
                             )}
                             {item.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(item.dueAmount)}</span>}
@@ -1761,10 +1802,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Payable</div>
                         <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>৳{formatAmount(item.payable)}</div>
                         <div style={{ fontSize: '9.5px', fontWeight: 600, marginTop: '2px' }}>
-                          <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(item.paidAmount)}</span>
+                          <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(item.totalCashCollected > 0 ? item.totalCashCollected : item.paidAmount)}</span>
                           {item.dueCollected > 0 && (
                             <span style={{ color: '#0284c7', marginLeft: '3px' }}>
-                              (incl. ৳{formatAmount(item.dueCollected)} due)
+                              (Sales: ৳{formatAmount(item.salesCashCollected)} + Due: ৳{formatAmount(item.dueCollected)})
                             </span>
                           )}
                           {item.dueAmount > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>· Due: ৳{formatAmount(item.dueAmount)}</span>}
